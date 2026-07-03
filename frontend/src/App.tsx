@@ -7,6 +7,8 @@ import TodoList from './components/TodoList'
 import QuickInput from './components/QuickInput'
 import DetailModal from './components/DetailModal'
 import SettingsModal from './components/SettingsModal'
+import RecurringTab from './components/RecurringTab'
+import RecurringPanel from './components/RecurringPanel'
 
 export default function App() {
   const { data: settings } = useSettings()
@@ -46,6 +48,8 @@ export default function App() {
           <div className="td-list-wrap"><TodoList /></div>
         </div>
       </main>
+      <RecurringTab />
+      <RecurringPanel />
       {detailPattern === 'modal' && openTodo && <DetailModal todo={openTodo} />}
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
     </div>
