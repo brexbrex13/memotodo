@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "allowJs": true
+  },
+  "include": ["src", "wailsjs"],
+  // 生成された Wails バインディング App.js は先頭に // @ts-check を持ち strict tsc で失敗するため
+  // 型チェック対象から外す（型は App.d.ts が提供し、実行時は Vite がバンドルする）。
+  "exclude": ["wailsjs/go/main/App.js"],
+  "references": [{ "path": "./tsconfig.node.json" }]
+}
