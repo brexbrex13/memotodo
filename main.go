@@ -20,11 +20,9 @@ import (
 	"memotodo/internal/tray"
 )
 
-// フロントエンドはバンドラーを使わないプレーンな ES Modules 構成のため、
-// npm/Node.js を必要とせず frontend/ の中身をそのまま埋め込む
-// （wails.json の frontend:install / frontend:build は空にしてある）。
+// フロントエンドは Vite でビルドした frontend/dist を埋め込む。
 //
-//go:embed all:frontend
+//go:embed all:frontend/dist
 var assets embed.FS
 
 // singleInstancePort は多重起動防止用のロック代わりに使うポート。
@@ -114,7 +112,7 @@ func main() {
 		})
 	}
 
-	frontendFS, err := fs.Sub(assets, "frontend")
+	frontendFS, err := fs.Sub(assets, "frontend/dist")
 	if err != nil {
 		fmt.Println("フロントエンド資産の読み込みに失敗しました:", err)
 		os.Exit(1)
