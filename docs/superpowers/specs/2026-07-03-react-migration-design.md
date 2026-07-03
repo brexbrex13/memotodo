@@ -57,7 +57,7 @@ frontend/
     hooks/                # useTodos / useTodo / useRecurring / useSettings（Query/Mutation）
     state/uiStore.ts      # 純 UI 状態（activeTab, openDetailId, detailPattern, drafts, toast）
     components/           # 後述のコンポーネント木
-    lib/                  # date.ts / links.ts / drafts.ts（純ロジック＝テスト対象）
+    lib/                  # format.ts（日付整形/プレビュー/パス正規化/並び替え＝純ロジック・テスト対象）
     events.ts             # EventsOn 購読 → invalidate / toast 表示
 ```
 
@@ -156,7 +156,7 @@ TodoDetail（インライン・モーダル共通の中身）
 |---|---|
 | リッチテキスト（太字/赤字/リンク挿入/クリップボード画像貼付） | **TipTap**（StarterKit＋Link＋Image 拡張）。画像貼付は `handlePaste` でクリップボード画像を拾い `App.SaveImage(base64)` → 返ったパスを Image ノードに挿入。ツールバー（B/赤/リンク/画像）は現行踏襲 |
 | ドラッグ並び替え（期日なしのみ） | **dnd-kit**（`SortableContext`＋`useSortable`）。ドロップ時に新順序で `ReorderTodos` mutation → invalidate。楽観的更新でチラつき防止 |
-| 本文中リンク検出（URL/UNC/ローカルパス） | `lib/links.ts` に純関数として移植（＝テスト対象）。クリックで `OpenURL`/`OpenLocalPath` |
+| 本文中リンク（URL/UNC/ローカルパス） | 検出は**バックエンド責務**で `todo.links: {type, value}[]` として返る。フロントは表示とクリック処理のみ（`OpenURL`/`OpenLocalPath`、`file://` 除去）。クライアント側検出は行わない |
 | 日付/期日 | ネイティブ `input[type=date]` / `datetime-local` を維持（依存を増やさない） |
 | インライン⇔モーダル | 同一 `TodoDetail` を器だけ替えて描画。モーダルは React Portal |
 | トースト | 現行のオーバーレイ相当を uiStore 駆動のコンポーネントで再現（自動消滅なし＝現行踏襲） |
@@ -174,10 +174,12 @@ TodoDetail（インライン・モーダル共通の中身）
 
 | 対象 | なぜ |
 |---|---|
-| `lib/date.ts`（営業日/期日近接・期限切れ判定、TZ 跨ぎの日付計算） | 直近コミットで timezone date math バグを実際に修正済み＝最も壊れやすい領域 |
-| `lib/links.ts`（URL/UNC/ローカルパス検出） | 分岐が多く回帰しやすい純関数 |
-| `lib/drafts.ts`（ドラフトの保持/破棄ルール） | 「未保存編集を失わない」要件の中核 |
-| reorder のインデックス計算 | DnD の並び替えロジック |
+| `lib/format.ts` の `fmtDeadline`（YYYY-MM-DD → M/D(曜)、ローカル時刻で曜日算出） | 直近コミットで timezone date math バグを修正済み＝最も壊れやすい領域 |
+| `lib/format.ts` の `normalizeLocalPath`（`file://` 除去＋復号） | ローカルパスを開く際の分岐で回帰しやすい純関数 |
+| `lib/format.ts` の `previewText`（1行目＋省略記号） | 一覧表示の見出し整形 |
+| `lib/format.ts` の `computeReorder`（並び替え後の id 順序） | DnD の並び替えロジック |
+
+補足: 期日近接/期限切れ判定（`is_near`/`is_overdue`）とリンク検出はバックエンド責務のため、クライアント側テスト対象ではない。
 
 UI は型安全＋実機確認でカバー（重い UI テストは書かない）。
 
