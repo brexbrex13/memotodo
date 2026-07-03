@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
@@ -48,9 +49,9 @@ export default function RichTextEditor({
         const items = Array.from(event.clipboardData?.items || [])
         const img = items.find((it) => it.type.startsWith('image/'))
         if (!img) return false
-        event.preventDefault()
         const blob = img.getAsFile()
-        if (!blob) return true
+        if (!blob) return false
+        event.preventDefault()
         blobToDataUrl(blob)
           .then((dataUrl) => App.SaveImage(dataUrl))
           .then((src) => editor?.chain().focus().setImage({ src }).run())
@@ -59,6 +60,12 @@ export default function RichTextEditor({
       },
     },
   })
+
+  useEffect(() => {
+    if (editor && value !== editor.getHTML()) {
+      editor.commands.setContent(value || '', false)
+    }
+  }, [editor, value])
 
   const insertImageFromClipboard = async () => {
     try {
