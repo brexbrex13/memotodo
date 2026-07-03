@@ -1,0 +1,47 @@
+name: Release
+
+# v で始まるタグ（例: v1.0.0）を push すると、Windows 向けビルドを作成して
+# GitHub Release に添付する。
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Build (Windows/amd64, NSIS installer)
+        run: wails build -platform windows/amd64 -nsis
+
+      - name: Package portable zip
+        shell: pwsh
+        run: |
+          $dist = "dist"
+          New-Item -ItemType Directory -Path $dist | Out-Null
+          Copy-Item "build/bin/memotodo.exe" -Destination $dist
+          Compress-Archive -Path "$dist/*" -DestinationPath "memotodo-windows-amd64.zip"
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            memotodo-windows-amd64.zip
+            build/bin/*-amd64-installer.exe
