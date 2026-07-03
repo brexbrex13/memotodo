@@ -50,15 +50,6 @@ wails build -platform windows/amd64 -nsis
 
 生成物は `build/bin/` 配下に出力されます。
 
-### GitHub Releases への自動公開
-
-`v1.0.0` のような `v` から始まるタグを push すると、`.github/workflows/release.yml` が Windows 向けビルド（ポータブル zip ＋ NSIS インストーラー）を作成し、GitHub Release に自動で添付します（`workflow_dispatch` から手動実行も可能）。
-
-```sh
-git tag v1.0.0
-git push origin v1.0.0
-```
-
 ## ライセンス
 
 本ソフトウェアは [MIT License](./LICENSE) で公開しています。商用利用を含め、自由に利用・改変・再配布いただけます。
