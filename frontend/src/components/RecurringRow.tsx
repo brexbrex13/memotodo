@@ -3,12 +3,16 @@ import { useUiStore } from '../state/uiStore'
 import { useRecurringMutations } from '../hooks/useRecurringMutations'
 import { fmtDeadline } from '../lib/format'
 import { recurringMetaLabel } from '../lib/recurring'
+import RecurringDetail from './RecurringDetail'
 
 type Variant = 'overdue' | 'current' | 'all'
 
 export default function RecurringRow({ task, variant }: { task: RecurringTask; variant: Variant }) {
   const setOpenId = useUiStore((s) => s.setRecurringOpenId)
   const { toggleComplete, remove } = useRecurringMutations()
+  const openId = useUiStore((s) => s.recurringOpenId)
+  const detailPattern = useUiStore((s) => s.detailPattern)
+  const showInline = openId === task.id && detailPattern === 'inline'
 
   const onToggle = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -58,6 +62,11 @@ export default function RecurringRow({ task, variant }: { task: RecurringTask; v
             <div className="td-recurring-occ-title">{task.title}</div>
           </div>
           <span className="td-recurring-occ-freq">{fmtDeadline(task.current_deadline)}</span>
+        </div>
+      )}
+      {showInline && (
+        <div className="td-recurring-detail-inline">
+          <RecurringDetail task={task} />
         </div>
       )}
     </div>

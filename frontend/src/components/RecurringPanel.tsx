@@ -1,11 +1,14 @@
 import { useRecurringPanel, useRecurringTasks } from '../hooks/useRecurring'
 import { useUiStore } from '../state/uiStore'
 import RecurringRow from './RecurringRow'
+import RecurringDetail from './RecurringDetail'
 
 export default function RecurringPanel() {
   const open = useUiStore((s) => s.recurringPanelOpen)
   const setPanelOpen = useUiStore((s) => s.setRecurringPanelOpen)
   const setOpenId = useUiStore((s) => s.setRecurringOpenId)
+  const openId = useUiStore((s) => s.recurringOpenId)
+  const detailPattern = useUiStore((s) => s.detailPattern)
   const { data: panel } = useRecurringPanel()
   const { data: allTasks } = useRecurringTasks()
 
@@ -37,6 +40,11 @@ export default function RecurringPanel() {
           </div>
         </div>
         <div className="td-recurring-panel-body">
+          {openId === 'new' && detailPattern === 'inline' && (
+            <div className="td-recurring-detail-inline">
+              <RecurringDetail task={null} />
+            </div>
+          )}
           {overdue.length > 0 && (
             <div className="td-recurring-overdue-block">
               <div className="td-recurring-overdue-title">残タスク（前回分が未完了です）</div>
