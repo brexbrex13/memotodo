@@ -3,10 +3,12 @@ import { useSettings } from './hooks/useSettings'
 import { useUiStore } from './state/uiStore'
 import Tabs from './components/Tabs'
 import TodoList from './components/TodoList'
+import QuickInput from './components/QuickInput'
 
 export default function App() {
   const { data: settings } = useSettings()
   const setDetailPattern = useUiStore((s) => s.setDetailPattern)
+  const activeTab = useUiStore((s) => s.activeTab)
 
   useEffect(() => {
     if (settings?.detail_pattern === 'inline' || settings?.detail_pattern === 'modal') {
@@ -32,6 +34,7 @@ export default function App() {
       <main className="td-main">
         <div className="td-content">
           <Tabs />
+          {activeTab === 'pending' && <QuickInput />}
           <div className="td-list-wrap"><TodoList /></div>
         </div>
       </main>
