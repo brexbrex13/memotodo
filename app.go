@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -25,9 +26,10 @@ var appIconPNG embed.FS
 // App は Wails のフロントエンド（JS）から呼び出せるバインディングを提供する。
 // 旧 Flask REST API 層（apps/todo/__init__.py）が担っていた役割を置き換える。
 type App struct {
-	ctx       context.Context
-	store     *todo.Store
-	scheduler *todo.Scheduler
+	ctx           context.Context
+	store         *todo.Store
+	scheduler     *todo.Scheduler
+	windowVisible atomic.Bool
 }
 
 // NewApp は App を生成する。DBオープン等は startup 時に行う。
@@ -38,6 +40,9 @@ func NewApp() *App {
 // startup は Wails 起動時に一度だけ呼ばれる。
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	// 起動直後はウィンドウが見えている。スケジューラ開始で即発火するリマインダーが
+	// windowVisible を読む前にフラグを立てておく（false のままだとネイティブ通知が二重に出る）。
+	a.windowVisible.Store(true)
 
 	dataDir, err := appDataDir()
 	if err != nil {
@@ -137,7 +142,7 @@ func (a *App) handleReminderNotify(todoID int64) {
 
 	wailsruntime.EventsEmit(a.ctx, "todo:reminder", ReminderNotifyPayload{Todo: t})
 
-	if method.Toast {
+	if shouldPushNative(a.windowVisible.Load(), wailsruntime.WindowIsMinimised(a.ctx), method.Toast, method.BringToFront) {
 		notify.Push("リマインダー", t.Title)
 	}
 	if method.BringToFront {
@@ -154,7 +159,7 @@ func (a *App) handlePeriodicNotify() {
 
 	wailsruntime.EventsEmit(a.ctx, "todo:periodic")
 
-	if method.Toast {
+	if shouldPushNative(a.windowVisible.Load(), wailsruntime.WindowIsMinimised(a.ctx), method.Toast, method.BringToFront) {
 		if body := a.periodicNotifySummary(); body != "" {
 			notify.Push("MemoTodo リマインド", body)
 		}
@@ -196,6 +201,23 @@ func (a *App) bringToFront() {
 	}
 	wailsruntime.WindowShow(a.ctx)
 	wailsruntime.WindowUnminimise(a.ctx)
+	a.windowVisible.Store(true)
+}
+
+// shouldPushNative は OS ネイティブ通知（notify.Push）を出すべきか判定する。
+// ウィンドウが見えている（表示中かつ非最小化）／これから前面化する場合は、
+// アプリ内トーストが目に入るためネイティブ通知は抑制する（二重通知防止＝Discord 挙動）。
+func shouldPushNative(visible, minimised, toastEnabled, bringToFront bool) bool {
+	if !toastEnabled {
+		return false
+	}
+	if bringToFront {
+		return false
+	}
+	if visible && !minimised {
+		return false
+	}
+	return true
 }
 
 // --- メモ CRUD ---

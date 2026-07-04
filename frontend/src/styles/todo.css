@@ -854,6 +854,9 @@ html, body {
   background: var(--bg); font-family: inherit; font-size: 14px; color: var(--text-primary);
   line-height: 1.6; word-break: break-word; outline: none;
 }
+/* 実際の編集要素は内側の contenteditable(.ProseMirror)。フォーカス時のブラウザ既定 outline（黒枠）を消す。
+   フォーカスの見た目は .td-editor-wrap:focus-within 側で表現する。min-height で箱いっぱいをクリック可能にする。 */
+.td-editor .ProseMirror { outline: none; min-height: 72px; }
 .td-editor:empty::before { content: attr(placeholder); color: var(--text-muted); pointer-events: none; display: block; }
 .td-editor img { max-width: 100%; max-height: 260px; border-radius: var(--radius-sm); margin: 4px 0; display: block; cursor: default; }
 .td-editor a { color: #3D6BAA; text-decoration: underline; cursor: pointer; }
@@ -1038,3 +1041,101 @@ html, body {
 @media (max-width: 400px) {
   .td-header-title { font-size: 13px; }
 }
+
+/* === Discord 風ハイブリッド通知トースト（Phase C） === */
+/* 右下固定・縦スタック・スライドイン・手動閉じ。ダーク配色は Discord パレット準拠。 */
+.td-dtoast-host {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 3000;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-end;
+  pointer-events: none; /* 隙間のクリックを透過。カード側で有効化する。 */
+}
+.td-dtoast {
+  pointer-events: auto;
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  background: #313338;
+  color: #f2f3f5;
+  border: 1px solid #1e1f22;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  font-size: 13px;
+}
+.td-dtoast-in { animation: td-dtoast-slide-in 0.22s ease-out; }
+@keyframes td-dtoast-slide-in {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.td-dtoast-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid #26272b;
+}
+.td-dtoast-label { font-weight: 700; font-size: 12px; letter-spacing: 0.03em; color: #b5bac1; }
+.td-dtoast-close {
+  border: none;
+  background: transparent;
+  color: #b5bac1;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+}
+.td-dtoast-close:hover { background: #3a3c42; color: #f2f3f5; }
+.td-dtoast-body { padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow-y: auto; }
+.td-dtoast-title { font-size: 14px; font-weight: 700; white-space: pre-wrap; }
+.td-dtoast-meta { font-size: 12px; color: #b5bac1; display: flex; align-items: center; gap: 5px; }
+.td-dtoast-meta.is-overdue { color: #f23f43; font-weight: 700; }
+.td-dtoast-snooze-row { display: flex; align-items: center; gap: 6px; padding: 0 14px 10px; flex-wrap: wrap; }
+.td-dtoast-snooze-label { font-size: 11px; font-weight: 700; color: #b5bac1; }
+.td-dtoast-snooze {
+  border: 1px solid #4e5058;
+  background: #2b2d31;
+  color: #f2f3f5;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.td-dtoast-snooze:hover { background: #3a3c42; }
+.td-dtoast-actions { display: flex; gap: 8px; padding: 8px 14px 12px; }
+.td-dtoast-btn {
+  flex: 1;
+  border: 1px solid #4e5058;
+  background: #2b2d31;
+  color: #f2f3f5;
+  border-radius: 6px;
+  padding: 7px 0;
+  font-size: 12px;
+  cursor: pointer;
+}
+.td-dtoast-btn:hover { background: #3a3c42; }
+.td-dtoast-btn-primary { background: #5865f2; border-color: #5865f2; color: #fff; }
+.td-dtoast-btn-primary:hover { background: #4752c4; }
+.td-dtoast-supergroup + .td-dtoast-supergroup { margin-top: 8px; }
+.td-dtoast-supergroup-label { font-size: 11px; font-weight: 700; color: #949ba4; margin-bottom: 4px; }
+.td-dtoast-group + .td-dtoast-group { margin-top: 8px; }
+.td-dtoast-group-label { font-size: 12px; font-weight: 700; color: #b5bac1; margin-bottom: 2px; }
+.td-dtoast-group.is-overdue .td-dtoast-group-label { color: #f23f43; }
+.td-dtoast-group-list { display: flex; flex-direction: column; }
+.td-dtoast-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.td-dtoast-item:hover { background: #3a3c42; }
+.td-dtoast-item-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.td-dtoast-item-meta { color: #b5bac1; font-size: 11px; white-space: nowrap; flex-shrink: 0; }
+.td-dtoast-group.is-overdue .td-dtoast-item-meta { color: #f23f43; font-weight: 700; }

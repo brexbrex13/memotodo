@@ -20,11 +20,9 @@ import (
 	"memotodo/internal/tray"
 )
 
-// フロントエンドはバンドラーを使わないプレーンな ES Modules 構成のため、
-// npm/Node.js を必要とせず frontend/ の中身をそのまま埋め込む
-// （wails.json の frontend:install / frontend:build は空にしてある）。
+// フロントエンドは Vite でビルドした frontend/dist を埋め込む。
 //
-//go:embed all:frontend
+//go:embed all:frontend/dist
 var assets embed.FS
 
 // singleInstancePort は多重起動防止用のロック代わりに使うポート。
@@ -114,7 +112,7 @@ func main() {
 		})
 	}
 
-	frontendFS, err := fs.Sub(assets, "frontend")
+	frontendFS, err := fs.Sub(assets, "frontend/dist")
 	if err != nil {
 		fmt.Println("フロントエンド資産の読み込みに失敗しました:", err)
 		os.Exit(1)
@@ -141,6 +139,9 @@ func main() {
 			if quitting {
 				return false
 			}
+			// 隠れる直前にまずフラグを倒す。この後に発火するリマインダーは
+			// アプリ内トーストが見えないので、ネイティブ通知を出す側へ回す。
+			app.windowVisible.Store(false)
 			// 定期通知トーストはメインウィンドウが隠れたら消しておく
 			// （再度開いたときに古い通知が残っているのを防ぐため）。
 			wailsruntime.EventsEmit(ctx, "todo:window-hidden")
