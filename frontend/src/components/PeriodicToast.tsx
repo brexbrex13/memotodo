@@ -17,12 +17,12 @@ export default function PeriodicToast() {
   const g = buildPeriodicGroups(memos, panel)
   if (g.isEmpty) return null
 
+  // タスクのクリックでは閉じない。閉じるのは明示的な×ボタン、またはメインウィンドウが
+  // 隠れたとき（todo:window-hidden → clearToastsByKind）のみ。
   const gotoRecurring = () => {
-    dismissToast('periodic')
     setRecurringPanelOpen(true)
   }
   const gotoTodo = (t: Todo) => {
-    dismissToast('periodic')
     setTab('pending')
     setForceDetailModalId(t.id)
   }
