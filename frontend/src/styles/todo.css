@@ -384,6 +384,7 @@ html, body {
   display: inline-flex;
   align-items: center;
 }
+.td-meta-icon.is-reminded { color: var(--warn); }
 
 .td-deadline-chip {
   background: var(--accent-light);
@@ -1138,4 +1139,5 @@ html, body {
 .td-dtoast-item:hover { background: #3a3c42; }
 .td-dtoast-item-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .td-dtoast-item-meta { color: #b5bac1; font-size: 11px; white-space: nowrap; flex-shrink: 0; }
+.td-dtoast-group.is-overdue .td-dtoast-item-title { color: #f23f43; font-weight: 700; }
 .td-dtoast-group.is-overdue .td-dtoast-item-meta { color: #f23f43; font-weight: 700; }
