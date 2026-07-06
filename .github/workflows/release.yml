@@ -43,8 +43,10 @@ jobs:
           $cfg | ConvertTo-Json -Depth 32 | Set-Content wails.json -Encoding utf8
           Write-Host "Injected productVersion = $v"
 
+      # -trimpath でビルドマシンのファイルパスを exe に埋め込まないようにする。
+      # 再現性のあるビルドになり、Windows Defender 等の誤検知要因を減らす効果もある。
       - name: Build (Windows/amd64, NSIS installer)
-        run: wails build -platform windows/amd64 -nsis
+        run: wails build -platform windows/amd64 -nsis -trimpath
 
       - name: Package portable zip
         shell: pwsh

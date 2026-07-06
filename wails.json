@@ -8,7 +8,10 @@
   "frontend:dev:serverUrl": "auto",
   "author": { "name": "MemoTodo", "email": "" },
   "info": {
+    "companyName": "MemoTodo",
     "productName": "MemoTodo",
-    "productVersion": "0.0.0"
+    "productVersion": "0.0.0",
+    "copyright": "Copyright © 2026 brexbrex13",
+    "comments": "https://github.com/brexbrex13/memotodo"
   }
 }
