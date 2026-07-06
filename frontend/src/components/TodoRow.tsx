@@ -64,7 +64,12 @@ function TodoRowContent({ todo, sortable }: { todo: Todo; sortable?: Sortable })
         </div>
         <div className="td-row-side">
           {todo.reminder_enabled ? (
-            <span className="td-meta-icon" title="リマインダーあり"><i className="bi bi-bell" /></span>
+            <span
+              className={`td-meta-icon${todo.reminded ? ' is-reminded' : ''}`}
+              title={todo.reminded ? 'リマインダー通知済み' : 'リマインダーあり'}
+            >
+              <i className={`bi ${todo.reminded ? 'bi-bell-fill' : 'bi-bell'}`} />
+            </span>
           ) : null}
           {todo.memo && todo.memo.trim() ? (
             <span className="td-meta-icon" title="詳細メモあり"><i className="bi bi-journal-text" /></span>

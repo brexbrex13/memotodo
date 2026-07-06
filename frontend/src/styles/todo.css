@@ -384,6 +384,7 @@ html, body {
   display: inline-flex;
   align-items: center;
 }
+.td-meta-icon.is-reminded { color: var(--warn); }
 
 .td-deadline-chip {
   background: var(--accent-light);

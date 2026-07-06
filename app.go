@@ -142,7 +142,7 @@ func (a *App) handleReminderNotify(todoID int64) {
 
 	wailsruntime.EventsEmit(a.ctx, "todo:reminder", ReminderNotifyPayload{Todo: t})
 
-	if shouldPushNative(a.windowVisible.Load(), wailsruntime.WindowIsMinimised(a.ctx), method.Toast, method.BringToFront) {
+	if shouldPushNative(a.windowVisible.Load(), wailsruntime.WindowIsMinimised(a.ctx), method.Toast) {
 		notify.Push("リマインダー", t.Title)
 	}
 	if method.BringToFront {
@@ -159,7 +159,7 @@ func (a *App) handlePeriodicNotify() {
 
 	wailsruntime.EventsEmit(a.ctx, "todo:periodic")
 
-	if shouldPushNative(a.windowVisible.Load(), wailsruntime.WindowIsMinimised(a.ctx), method.Toast, method.BringToFront) {
+	if shouldPushNative(a.windowVisible.Load(), wailsruntime.WindowIsMinimised(a.ctx), method.Toast) {
 		if body := a.periodicNotifySummary(); body != "" {
 			notify.Push("MemoTodo リマインド", body)
 		}
@@ -205,13 +205,12 @@ func (a *App) bringToFront() {
 }
 
 // shouldPushNative は OS ネイティブ通知（notify.Push）を出すべきか判定する。
-// ウィンドウが見えている（表示中かつ非最小化）／これから前面化する場合は、
-// アプリ内トーストが目に入るためネイティブ通知は抑制する（二重通知防止＝Discord 挙動）。
-func shouldPushNative(visible, minimised, toastEnabled, bringToFront bool) bool {
+// ウィンドウが既に見えている（表示中かつ非最小化）場合のみ、アプリ内トーストが
+// 目に入っているためネイティブ通知は抑制する（二重通知防止＝Discord 挙動）。
+// 「最前面表示」設定（bringToFront）は通知発火後にウィンドウを呼び出すだけの
+// 別チャンネルであり、ネイティブ通知の抑制条件には含めない（両方ONなら両方出す）。
+func shouldPushNative(visible, minimised, toastEnabled bool) bool {
 	if !toastEnabled {
-		return false
-	}
-	if bringToFront {
 		return false
 	}
 	if visible && !minimised {
