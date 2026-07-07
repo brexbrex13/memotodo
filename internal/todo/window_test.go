@@ -9,7 +9,7 @@ func TestWindowStateRoundTrip(t *testing.T) {
 		t.Fatal("保存前は ok=false になるべき")
 	}
 
-	want := WindowState{Width: 1400, Height: 900, Maximized: true}
+	want := WindowState{Width: 1400, Height: 900, X: 120, Y: 80, Maximized: true}
 	if err := SaveWindowState(dir, want); err != nil {
 		t.Fatal(err)
 	}

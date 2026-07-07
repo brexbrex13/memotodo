@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
@@ -25,6 +26,7 @@ export default function RichTextEditor({
 }) {
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
 
   const editor = useEditor({
     extensions: [
@@ -38,7 +40,13 @@ export default function RichTextEditor({
     onUpdate: ({ editor }) => onChangeRef.current(editor.getHTML()),
     editorProps: {
       // 保存済みメモ内・貼付後のリンクは既定ブラウザで開く（現行 _wireExternalLinkOpeners 相当）
-      handleClickOn: (_view, _pos, _node, _nodePos, event) => {
+      // 画像はクリックで拡大表示（ライトボックス）する。
+      handleClickOn: (_view, _pos, node, _nodePos, event) => {
+        if (node.type.name === 'image') {
+          event.preventDefault()
+          setLightboxSrc(node.attrs.src as string)
+          return true
+        }
         const a = (event.target as HTMLElement)?.closest('a[href]')
         if (a) {
           event.preventDefault()
@@ -114,6 +122,12 @@ export default function RichTextEditor({
           onMouseDown={(e) => { e.preventDefault(); insertImageFromClipboard() }}><i className="bi bi-image" /></button>
       </div>
       <EditorContent editor={editor} className="td-editor" />
+      {lightboxSrc && createPortal(
+        <div className="td-image-lightbox-overlay" onClick={() => setLightboxSrc(null)}>
+          <img src={lightboxSrc} className="td-image-lightbox-img" onClick={(e) => e.stopPropagation()} />
+        </div>,
+        document.body,
+      )}
     </div>
   )
 }

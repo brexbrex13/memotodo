@@ -859,8 +859,14 @@ html, body {
    フォーカスの見た目は .td-editor-wrap:focus-within 側で表現する。min-height で箱いっぱいをクリック可能にする。 */
 .td-editor .ProseMirror { outline: none; min-height: 72px; }
 .td-editor:empty::before { content: attr(placeholder); color: var(--text-muted); pointer-events: none; display: block; }
-.td-editor img { max-width: 100%; max-height: 260px; border-radius: var(--radius-sm); margin: 4px 0; display: block; cursor: default; }
+.td-editor img { max-width: 100%; max-height: 260px; border-radius: var(--radius-sm); margin: 4px 0; display: block; cursor: zoom-in; }
 .td-editor a { color: #3D6BAA; text-decoration: underline; cursor: pointer; }
+
+.td-image-lightbox-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.75); z-index: 300;
+  display: flex; align-items: center; justify-content: center; cursor: zoom-out; padding: 32px;
+}
+.td-image-lightbox-img { max-width: 100%; max-height: 100%; border-radius: var(--radius-sm); box-shadow: 0 8px 32px rgba(0,0,0,.4); cursor: default; }
 
 /* ========================================
    アプリ設定モーダル
