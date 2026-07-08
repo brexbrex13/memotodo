@@ -521,11 +521,15 @@ type SaveSettingsRequest struct {
 	TodoNearDeadlineDays *int               `json:"todo_near_deadline_days"`
 	ReminderNotifyMethod *todo.NotifyMethod `json:"reminder_notify_method"`
 	PeriodicNotifyMethod *todo.NotifyMethod `json:"periodic_notify_method"`
+	ImageOpenMethod      *string            `json:"image_open_method"`
 }
 
 func (a *App) SaveSettings(req SaveSettingsRequest) (todo.Settings, error) {
 	if req.DetailPattern != nil && *req.DetailPattern != "inline" && *req.DetailPattern != "modal" {
 		return todo.Settings{}, fmt.Errorf("detail_patternはinlineまたはmodalで指定してください")
+	}
+	if req.ImageOpenMethod != nil && *req.ImageOpenMethod != "inapp" && *req.ImageOpenMethod != "system" {
+		return todo.Settings{}, fmt.Errorf("image_open_methodはinappまたはsystemで指定してください")
 	}
 	settings, err := a.store.SaveSettings(todo.SettingsUpdate{
 		NotifyTimes:          req.NotifyTimes,
@@ -534,6 +538,7 @@ func (a *App) SaveSettings(req SaveSettingsRequest) (todo.Settings, error) {
 		TodoNearDeadlineDays: req.TodoNearDeadlineDays,
 		ReminderNotifyMethod: req.ReminderNotifyMethod,
 		PeriodicNotifyMethod: req.PeriodicNotifyMethod,
+		ImageOpenMethod:      req.ImageOpenMethod,
 	})
 	if err != nil {
 		return todo.Settings{}, err
@@ -596,10 +601,24 @@ func (a *App) OpenLocalPath(path string) error {
 			path = u
 		}
 	}
+	return openWithOS(path)
+}
+
+// OpenImage はメモに貼り付けた画像をOS標準の画像ビューワで開く。
+// src は SaveImage が返す "/todo-images/xxx.png" 形式の相対URL。
+func (a *App) OpenImage(src string) error {
+	name := strings.TrimPrefix(src, "/todo-images/")
+	if name == "" || name == src || strings.Contains(name, "/") || strings.Contains(name, "..") {
+		return fmt.Errorf("不正な画像パスです")
+	}
+	return openWithOS(filepath.Join(a.store.ImagesDir(), name))
+}
+
+// openWithOS は指定パスをOS標準の関連付けアプリで開く。
+func openWithOS(path string) error {
 	if _, err := os.Stat(path); err != nil {
 		return fmt.Errorf("指定されたパスが存在しません")
 	}
-
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "windows":

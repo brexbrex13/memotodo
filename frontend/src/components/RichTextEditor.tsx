@@ -7,6 +7,7 @@ import Image from '@tiptap/extension-image'
 import TextStyle from '@tiptap/extension-text-style'
 import { Color } from '@tiptap/extension-color'
 import { App } from '../api/client'
+import { useSettings } from '../hooks/useSettings'
 
 async function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -28,6 +29,10 @@ export default function RichTextEditor({
   onChangeRef.current = onChange
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
 
+  const { data: settings } = useSettings()
+  const imageOpenMethodRef = useRef(settings?.image_open_method ?? 'inapp')
+  imageOpenMethodRef.current = settings?.image_open_method ?? 'inapp'
+
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -40,11 +45,16 @@ export default function RichTextEditor({
     onUpdate: ({ editor }) => onChangeRef.current(editor.getHTML()),
     editorProps: {
       // 保存済みメモ内・貼付後のリンクは既定ブラウザで開く（現行 _wireExternalLinkOpeners 相当）
-      // 画像はクリックで拡大表示（ライトボックス）する。
+      // 画像はクリックで拡大表示する（設定でアプリ内ライトボックス／OS標準ビューワを選択可能）。
       handleClickOn: (_view, _pos, node, _nodePos, event) => {
         if (node.type.name === 'image') {
           event.preventDefault()
-          setLightboxSrc(node.attrs.src as string)
+          const src = node.attrs.src as string
+          if (imageOpenMethodRef.current === 'system') {
+            App.OpenImage(src).catch(() => alert('画像を開けませんでした'))
+          } else {
+            setLightboxSrc(src)
+          }
           return true
         }
         const a = (event.target as HTMLElement)?.closest('a[href]')

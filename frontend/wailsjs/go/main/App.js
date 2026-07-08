@@ -54,6 +54,10 @@ export function GetTodos(arg1) {
   return window['go']['main']['App']['GetTodos'](arg1);
 }
 
+export function OpenImage(arg1) {
+  return window['go']['main']['App']['OpenImage'](arg1);
+}
+
 export function OpenLocalPath(arg1) {
   return window['go']['main']['App']['OpenLocalPath'](arg1);
 }

@@ -29,6 +29,8 @@ export function GetTodo(arg1:number):Promise<todo.Todo>;
 
 export function GetTodos(arg1:string):Promise<Array<todo.Todo>>;
 
+export function OpenImage(arg1:string):Promise<void>;
+
 export function OpenLocalPath(arg1:string):Promise<void>;
 
 export function OpenURL(arg1:string):Promise<void>;

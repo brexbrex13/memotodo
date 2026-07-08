@@ -47,11 +47,12 @@ export namespace main {
 	    todo_near_deadline_days?: number;
 	    reminder_notify_method?: todo.NotifyMethod;
 	    periodic_notify_method?: todo.NotifyMethod;
-	
+	    image_open_method?: string;
+
 	    static createFrom(source: any = {}) {
 	        return new SaveSettingsRequest(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.notify_times = source["notify_times"];
@@ -60,6 +61,7 @@ export namespace main {
 	        this.todo_near_deadline_days = source["todo_near_deadline_days"];
 	        this.reminder_notify_method = this.convertValues(source["reminder_notify_method"], todo.NotifyMethod);
 	        this.periodic_notify_method = this.convertValues(source["periodic_notify_method"], todo.NotifyMethod);
+	        this.image_open_method = source["image_open_method"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -249,11 +251,12 @@ export namespace todo {
 	    todo_near_deadline_days: number;
 	    reminder_notify_method: NotifyMethod;
 	    periodic_notify_method: NotifyMethod;
-	
+	    image_open_method: string;
+
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.notify_times = source["notify_times"];
@@ -262,6 +265,7 @@ export namespace todo {
 	        this.todo_near_deadline_days = source["todo_near_deadline_days"];
 	        this.reminder_notify_method = this.convertValues(source["reminder_notify_method"], NotifyMethod);
 	        this.periodic_notify_method = this.convertValues(source["periodic_notify_method"], NotifyMethod);
+	        this.image_open_method = source["image_open_method"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

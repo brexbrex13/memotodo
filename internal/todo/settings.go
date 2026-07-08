@@ -22,6 +22,7 @@ func defaultSettings() Settings {
 		// 画面を占有して邪魔になりうるため既定OFF（ユーザーが選んでONにする）。
 		ReminderNotifyMethod: NotifyMethod{Toast: true, BringToFront: false},
 		PeriodicNotifyMethod: NotifyMethod{Toast: true, BringToFront: false},
+		ImageOpenMethod:      "inapp",
 	}
 }
 
@@ -44,6 +45,7 @@ func (s *Store) LoadSettings() (Settings, error) {
 		TodoNearDeadlineDays int            `json:"todo_near_deadline_days"`
 		ReminderNotifyMethod *NotifyMethod  `json:"reminder_notify_method"`
 		PeriodicNotifyMethod *NotifyMethod  `json:"periodic_notify_method"`
+		ImageOpenMethod      string         `json:"image_open_method"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return def, nil
@@ -68,6 +70,9 @@ func (s *Store) LoadSettings() (Settings, error) {
 	if raw.PeriodicNotifyMethod != nil {
 		merged.PeriodicNotifyMethod = *raw.PeriodicNotifyMethod
 	}
+	if raw.ImageOpenMethod != "" {
+		merged.ImageOpenMethod = raw.ImageOpenMethod
+	}
 	return merged, nil
 }
 
@@ -79,6 +84,7 @@ type SettingsUpdate struct {
 	TodoNearDeadlineDays *int
 	ReminderNotifyMethod *NotifyMethod
 	PeriodicNotifyMethod *NotifyMethod
+	ImageOpenMethod      *string
 }
 
 // SaveSettings は設定を保存する（既存設定にマージ）。
@@ -104,6 +110,9 @@ func (s *Store) SaveSettings(u SettingsUpdate) (Settings, error) {
 	}
 	if u.PeriodicNotifyMethod != nil {
 		current.PeriodicNotifyMethod = *u.PeriodicNotifyMethod
+	}
+	if u.ImageOpenMethod != nil {
+		current.ImageOpenMethod = *u.ImageOpenMethod
 	}
 
 	data, err := json.MarshalIndent(current, "", "  ")
