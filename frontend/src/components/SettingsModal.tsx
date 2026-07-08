@@ -12,6 +12,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const setOpenId = useUiStore((s) => s.setOpenId)
 
   const [pattern, setPattern] = useState<'inline' | 'modal'>('inline')
+  const [imageOpenMethod, setImageOpenMethod] = useState<'inapp' | 'system'>('inapp')
   const [times, setTimes] = useState<string[]>([])
   const [nearDays, setNearDays] = useState<number>(3)
   const [rToast, setRToast] = useState(true)
@@ -26,6 +27,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     if (!settings || seeded.current) return
     seeded.current = true
     setPattern(settings.detail_pattern === 'modal' ? 'modal' : 'inline')
+    setImageOpenMethod(settings.image_open_method === 'system' ? 'system' : 'inapp')
     setTimes([...(settings.notify_times || [])])
     setNearDays(settings.todo_near_deadline_days ?? 3)
     setRToast(settings.reminder_notify_method?.toast ?? true)
@@ -39,6 +41,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
       await App.SaveSettings(
         main.SaveSettingsRequest.createFrom({
           detail_pattern: pattern,
+          image_open_method: imageOpenMethod,
           notify_times: times,
           todo_near_deadline_days: Number.isNaN(nearDays) ? 0 : nearDays,
           reminder_notify_method: { toast: rToast, bring_to_front: rFront },
@@ -71,6 +74,19 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                   className={`td-segmented-btn ${pattern === v ? 'active' : ''}`}
                   onClick={() => setPattern(v)}>
                   {v === 'inline' ? 'インライン' : 'モーダル'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="td-field">
+            <label className="td-label">メモの画像をクリックしたときの表示方法</label>
+            <div className="td-segmented">
+              {(['inapp', 'system'] as const).map((v) => (
+                <button key={v} type="button"
+                  className={`td-segmented-btn ${imageOpenMethod === v ? 'active' : ''}`}
+                  onClick={() => setImageOpenMethod(v)}>
+                  {v === 'inapp' ? 'アプリ内で拡大表示' : 'OS標準ビューワで開く'}
                 </button>
               ))}
             </div>

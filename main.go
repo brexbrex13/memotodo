@@ -62,17 +62,19 @@ func main() {
 		}
 	}()
 
-	// ウィンドウサイズはデータフォルダに保存し、次回起動時に復元する
+	// ウィンドウサイズ・位置はデータフォルダに保存し、次回起動時に復元する
 	// （保存先が決まらない場合はデフォルトサイズにフォールバックする）。
 	dataDir, dataDirErr := appDataDir()
 	width, height := defaultWindowWidth, defaultWindowHeight
 	startState := options.Normal
+	savedState, hasSavedState := todo.WindowState{}, false
 	if dataDirErr == nil {
 		if ws, ok := todo.LoadWindowState(dataDir); ok {
 			width, height = ws.Width, ws.Height
 			if ws.Maximized {
 				startState = options.Maximised
 			}
+			savedState, hasSavedState = ws, true
 		}
 	}
 
@@ -81,14 +83,16 @@ func main() {
 			return
 		}
 		w, h := wailsruntime.WindowGetSize(ctx)
+		x, y := wailsruntime.WindowGetPosition(ctx)
 		maximized := wailsruntime.WindowIsMaximised(ctx)
 		if maximized {
-			// 最大化中は元のウィンドウサイズが取得できないため、直前の非最大化サイズを保持する
+			// 最大化中は元のウィンドウサイズ・位置が取得できないため、直前の非最大化時の値を保持する
 			if prev, ok := todo.LoadWindowState(dataDir); ok {
 				w, h = prev.Width, prev.Height
+				x, y = prev.X, prev.Y
 			}
 		}
-		_ = todo.SaveWindowState(dataDir, todo.WindowState{Width: w, Height: h, Maximized: maximized})
+		_ = todo.SaveWindowState(dataDir, todo.WindowState{Width: w, Height: h, X: x, Y: y, Maximized: maximized})
 	}
 
 	// /todo-images/ 配下は SaveImage で保存した画像ファイルをディスクから配信する。
@@ -130,8 +134,15 @@ func main() {
 			Middleware: imagesMiddleware,
 		},
 		BackgroundColour: &options.RGBA{R: 247, G: 246, B: 243, A: 1},
-		OnStartup:        app.startup,
-		OnShutdown:       app.shutdown,
+		OnStartup: func(ctx context.Context) {
+			app.startup(ctx)
+			// Width/Height/WindowStartState は options.App 経由で起動時に反映されるが、
+			// 位置はそのような起動時オプションが無いため、ここで明示的に復元する。
+			if hasSavedState {
+				wailsruntime.WindowSetPosition(ctx, savedState.X, savedState.Y)
+			}
+		},
+		OnShutdown: app.shutdown,
 		OnBeforeClose: func(ctx context.Context) bool {
 			saveWindowState(ctx)
 			// ウィンドウを閉じてもアプリは常駐させ、トレイに残す。

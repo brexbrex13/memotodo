@@ -6,10 +6,12 @@ import (
 	"path/filepath"
 )
 
-// WindowState はメインウィンドウのサイズ・最大化状態。次回起動時に復元する。
+// WindowState はメインウィンドウのサイズ・位置・最大化状態。次回起動時に復元する。
 type WindowState struct {
 	Width     int  `json:"width"`
 	Height    int  `json:"height"`
+	X         int  `json:"x"`
+	Y         int  `json:"y"`
 	Maximized bool `json:"maximized"`
 }
 

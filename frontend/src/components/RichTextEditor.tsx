@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
@@ -6,6 +7,7 @@ import Image from '@tiptap/extension-image'
 import TextStyle from '@tiptap/extension-text-style'
 import { Color } from '@tiptap/extension-color'
 import { App } from '../api/client'
+import { useSettings } from '../hooks/useSettings'
 
 async function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -25,6 +27,11 @@ export default function RichTextEditor({
 }) {
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
+
+  const { data: settings } = useSettings()
+  const imageOpenMethodRef = useRef(settings?.image_open_method ?? 'inapp')
+  imageOpenMethodRef.current = settings?.image_open_method ?? 'inapp'
 
   const editor = useEditor({
     extensions: [
@@ -38,7 +45,18 @@ export default function RichTextEditor({
     onUpdate: ({ editor }) => onChangeRef.current(editor.getHTML()),
     editorProps: {
       // 保存済みメモ内・貼付後のリンクは既定ブラウザで開く（現行 _wireExternalLinkOpeners 相当）
-      handleClickOn: (_view, _pos, _node, _nodePos, event) => {
+      // 画像はクリックで拡大表示する（設定でアプリ内ライトボックス／OS標準ビューワを選択可能）。
+      handleClickOn: (_view, _pos, node, _nodePos, event) => {
+        if (node.type.name === 'image') {
+          event.preventDefault()
+          const src = node.attrs.src as string
+          if (imageOpenMethodRef.current === 'system') {
+            App.OpenImage(src).catch(() => alert('画像を開けませんでした'))
+          } else {
+            setLightboxSrc(src)
+          }
+          return true
+        }
         const a = (event.target as HTMLElement)?.closest('a[href]')
         if (a) {
           event.preventDefault()
@@ -114,6 +132,12 @@ export default function RichTextEditor({
           onMouseDown={(e) => { e.preventDefault(); insertImageFromClipboard() }}><i className="bi bi-image" /></button>
       </div>
       <EditorContent editor={editor} className="td-editor" />
+      {lightboxSrc && createPortal(
+        <div className="td-image-lightbox-overlay" onClick={() => setLightboxSrc(null)}>
+          <img src={lightboxSrc} className="td-image-lightbox-img" onClick={(e) => e.stopPropagation()} />
+        </div>,
+        document.body,
+      )}
     </div>
   )
 }

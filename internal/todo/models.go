@@ -54,6 +54,8 @@ type Settings struct {
 	// 両方OFFなら「アプリ内のみ」になる）。
 	ReminderNotifyMethod NotifyMethod `json:"reminder_notify_method"`
 	PeriodicNotifyMethod NotifyMethod `json:"periodic_notify_method"`
+	// メモの画像をクリックしたときの開き方。"inapp"（アプリ内ライトボックス）| "system"（OS標準の画像ビューワ）。
+	ImageOpenMethod string `json:"image_open_method"`
 }
 
 // NotifyMethod は通知の出し方（アプリ内トーストとの併用可否）。
