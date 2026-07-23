@@ -53,6 +53,8 @@ export function SaveImage(arg1:string):Promise<string>;
 
 export function SaveSettings(arg1:main.SaveSettingsRequest):Promise<todo.Settings>;
 
+export function SetTodoCategory(arg1:number,arg2:number):Promise<void>;
+
 export function SnoozeReminder(arg1:number,arg2:string):Promise<void>;
 
 export function ToggleImportant(arg1:number):Promise<void>;

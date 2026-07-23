@@ -41,10 +41,13 @@ export function useTodoMutations() {
     onError,
   })
 
-  // categoryId: null=通常タスクに戻す、それ以外=そのカテゴリへ変更（D&D仕分け・詳細プルダウン共通）
+  // categoryId: null=通常タスクに戻す、それ以外=そのカテゴリへ変更（D&D仕分け・詳細プルダウン共通）。
+  // UpdateTodo の部分更新（category_id のみ指定した任意フィールド送信）だと
+  // 実機で「0（通常タスクに戻す）」が正しく反映されないケースがあったため、
+  // 専用の必須引数エンドポイント（SetTodoCategory）を使う。
   const setCategory = useMutation({
     mutationFn: ({ id, categoryId }: { id: number; categoryId: number | null }) =>
-      App.UpdateTodo(id, main.UpdateTodoRequest.createFrom({ category_id: categoryId ?? 0 })),
+      App.SetTodoCategory(id, categoryId ?? 0),
     onSuccess: invalidateLists,
     onError,
   })
