@@ -35,24 +35,24 @@ export default function TodoRow({
 }
 
 function SortableTodoRow({ todo, groupKey }: { todo: Todo; groupKey: GroupKey }) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: todo.id,
     data: { type: 'todo', todoId: todo.id, groupKey },
   })
   const style = { transform: CSS.Transform.toString(transform), transition }
-  return <TodoRowContent todo={todo} drag={{ attributes, listeners, setNodeRef, style }} />
+  return <TodoRowContent todo={todo} drag={{ attributes, listeners, setNodeRef, style }} isDragging={isDragging} />
 }
 
 function DraggableTodoRow({ todo }: { todo: Todo }) {
-  const { attributes, listeners, setNodeRef, transform } = useDraggable({
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: todo.id,
     data: { type: 'todo', todoId: todo.id },
   })
   const style = { transform: CSS.Translate.toString(transform) }
-  return <TodoRowContent todo={todo} drag={{ attributes, listeners, setNodeRef, style }} />
+  return <TodoRowContent todo={todo} drag={{ attributes, listeners, setNodeRef, style }} isDragging={isDragging} />
 }
 
-function TodoRowContent({ todo, drag }: { todo: Todo; drag?: DragHandle }) {
+function TodoRowContent({ todo, drag, isDragging }: { todo: Todo; drag?: DragHandle; isDragging?: boolean }) {
   const activeTab = useUiStore((s) => s.activeTab)
   const openId = useUiStore((s) => s.openId)
   const detailPattern = useUiStore((s) => s.detailPattern)
@@ -69,6 +69,7 @@ function TodoRowContent({ todo, drag }: { todo: Todo; drag?: DragHandle }) {
     isDone ? 'is-done' : '',
     todo.is_overdue && !isDone ? 'is-overdue' : '',
     todo.is_important ? 'is-important' : '',
+    isDragging ? 'is-dragging' : '',
   ].join(' ')
 
   const chipClass = todo.is_overdue && !isDone ? 'is-overdue' : todo.is_near && !isDone ? 'is-near' : ''
@@ -81,9 +82,6 @@ function TodoRowContent({ todo, drag }: { todo: Todo; drag?: DragHandle }) {
             <i className="bi bi-grip-vertical" />
           </div>
         ) : null}
-        <div className={`td-checkbox ${isDone ? 'is-checked' : ''}`} title={isDone ? '未完了に戻す' : '完了にする'} onClick={() => (isDone ? restore.mutate(todo.id) : complete.mutate(todo.id))}>
-          {isDone ? <i className="bi bi-check-lg" /> : null}
-        </div>
         <div className="td-row-main">
           <div className="td-row-title" onClick={() => setOpenId(isOpen ? null : todo.id)}>
             {category && <span className="td-category-dot" style={{ background: category.color }} title={category.name} />}
@@ -106,9 +104,9 @@ function TodoRowContent({ todo, drag }: { todo: Todo; drag?: DragHandle }) {
             <i className={`bi ${todo.is_important ? 'bi-star-fill' : 'bi-star'}`} />
           </button>
           {todo.deadline ? <span className={`td-deadline-chip ${chipClass}`}>{fmtDeadline(todo.deadline)}</span> : null}
-          <button className="td-icon-btn td-chevron" title="詳細" onClick={() => setOpenId(isOpen ? null : todo.id)}>
-            <i className={`bi ${isOpen ? 'bi-chevron-up' : 'bi-chevron-down'}`} />
-          </button>
+          <div className={`td-checkbox ${isDone ? 'is-checked' : ''}`} title={isDone ? '未完了に戻す' : '完了にする'} onClick={() => (isDone ? restore.mutate(todo.id) : complete.mutate(todo.id))}>
+            {isDone ? <i className="bi bi-check-lg" /> : null}
+          </div>
         </div>
       </div>
       {showInline && <TodoDetail todo={todo} />}

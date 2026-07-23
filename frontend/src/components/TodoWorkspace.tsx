@@ -1,10 +1,12 @@
-import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core'
+import { useState } from 'react'
+import { DndContext, DragOverlay, closestCenter, PointerSensor, useSensor, useSensors, DragEndEvent, DragStartEvent } from '@dnd-kit/core'
 import { useTodos } from '../hooks/useTodos'
 import { useTodoMutations } from '../hooks/useTodoMutations'
 import { matchesGroup, GroupKey } from '../lib/categoryGroups'
 import { computeReorder } from '../lib/format'
 import FilterBar from './FilterBar'
 import TodoList from './TodoList'
+import TodoRow from './TodoRow'
 
 interface TodoDragData {
   type: 'todo'
@@ -25,8 +27,15 @@ export default function TodoWorkspace() {
   const { data: todos } = useTodos('pending')
   const { reorder, setCategory } = useTodoMutations()
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
+  const [activeId, setActiveId] = useState<number | null>(null)
+
+  const onDragStart = (e: DragStartEvent) => {
+    const active = e.active.data.current as TodoDragData | undefined
+    setActiveId(active?.type === 'todo' ? active.todoId : null)
+  }
 
   const onDragEnd = (e: DragEndEvent) => {
+    setActiveId(null)
     const active = e.active.data.current as TodoDragData | undefined
     const over = e.over?.data.current as CategoryTargetData | TodoDragData | undefined
     if (!active || active.type !== 'todo' || !over) return
@@ -45,10 +54,25 @@ export default function TodoWorkspace() {
     }
   }
 
+  const activeTodo = activeId != null ? (todos ?? []).find((t) => t.id === activeId) : undefined
+
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragCancel={() => setActiveId(null)}
+    >
       <FilterBar />
       <TodoList />
+      <DragOverlay>
+        {activeTodo ? (
+          <div className="td-drag-overlay">
+            <TodoRow todo={activeTodo} />
+          </div>
+        ) : null}
+      </DragOverlay>
     </DndContext>
   )
 }
