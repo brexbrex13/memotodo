@@ -83,14 +83,12 @@ export default function QuickInput({
     else submit()
   }
 
-  const label = targetCategory ? `「${targetCategory.name}」に登録` : 'タスクを登録'
   const placeholder = targetCategory
     ? `「${targetCategory.name}」にメモを入力してEnterで追加`
     : 'メモを入力してEnterで追加（Alt+Enterで改行）'
 
   return (
     <div className={`td-quick-input-wrap ${compact ? 'is-compact' : ''}`}>
-      {!compact && <div className="td-quick-input-label">{label}</div>}
       <textarea
         ref={ref}
         className="td-quick-input"
@@ -100,7 +98,6 @@ export default function QuickInput({
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={onKeyDown}
       />
-      {!compact && <div className="td-quick-input-hint">Enter で追加　・　Alt+Enter で改行</div>}
     </div>
   )
 }
