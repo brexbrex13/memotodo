@@ -220,6 +220,11 @@ html, body {
 .td-category-header-label { font-size: 13px; font-weight: 700; color: var(--text-primary); flex: 1; }
 .td-category-add-btn { flex-shrink: 0; }
 
+/* 通常タスクの見出し。カテゴリ見出しと同じ当たり判定（D&Dの受け皿）を持たせつつ、
+   トーンは控えめにする */
+.td-category-header-normal .td-category-header-label { font-weight: 600; color: var(--text-secondary); }
+.td-category-header-normal .td-badge { background: transparent; color: var(--text-muted); }
+
 .td-category-dot {
   width: 9px;
   height: 9px;
@@ -230,6 +235,13 @@ html, body {
 }
 
 .td-category-inline-add { padding: 0 16px 12px; }
+
+/* 完了済み一覧のツールバー（まとめて削除） */
+.td-done-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 16px 0;
+}
 
 /* 0件カテゴリでもドロップ先だとわかるよう表示するヒント */
 .td-category-empty-hint {
@@ -612,7 +624,9 @@ html, body {
   position: absolute;
   top: 54px;
   right: 0;
-  width: 52px;
+  /* タスク一覧側の行（右端の完了チェックボックス等）と重ならないよう、
+     以前(52px)より幅を絞ってある */
+  width: 34px;
   height: 156px;
   background: var(--bg-panel);
   border-radius: 14px 0 0 14px;
@@ -621,7 +635,7 @@ html, body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 14px;
+  gap: 10px;
   cursor: pointer;
   z-index: 30;
   transition: background .12s;
@@ -630,8 +644,8 @@ html, body {
 
 .td-recurring-tab-label {
   writing-mode: vertical-rl;
-  letter-spacing: 0.15em;
-  font-size: 13px;
+  letter-spacing: 0.1em;
+  font-size: 11px;
   font-weight: 700;
   color: var(--text-primary);
 }

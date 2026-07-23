@@ -5,6 +5,7 @@ import { Category, Todo } from '../api/client'
 import { useTodos } from '../hooks/useTodos'
 import { useCategories } from '../hooks/useCategories'
 import { useCategoryCollapse } from '../hooks/useCategoryCollapse'
+import { useTodoMutations } from '../hooks/useTodoMutations'
 import { useUiStore } from '../state/uiStore'
 import { GroupKey, matchesGroup } from '../lib/categoryGroups'
 import TodoRow from './TodoRow'
@@ -16,6 +17,7 @@ export default function TodoList() {
   const categoryFilter = useUiStore((s) => s.categoryFilter)
   const { data: todos, isLoading, isError } = useTodos()
   const { data: categories } = useCategories()
+  const { bulkDeleteDone } = useTodoMutations()
 
   if (isLoading) return <div className="td-loading"><span className="td-spinner" /></div>
   if (isError) return <div style={{ padding: 24, color: 'var(--accent)', fontSize: 13 }}>読み込みに失敗しました</div>
@@ -29,6 +31,14 @@ export default function TodoList() {
     const done = [...list].sort((a, b) => (b.done_at || '').localeCompare(a.done_at || ''))
     return (
       <div className="td-card">
+        <div className="td-done-toolbar">
+          <button
+            className="td-btn td-btn-ghost-danger td-btn-sm"
+            onClick={() => { if (confirm(`完了済みのタスクを${done.length}件すべて削除しますか？`)) bulkDeleteDone.mutate() }}
+          >
+            <i className="bi bi-trash3" /> 完了済みをすべて削除
+          </button>
+        </div>
         <div className="td-list">{done.map((t) => <TodoRow key={t.id} todo={t} />)}</div>
       </div>
     )
@@ -107,7 +117,12 @@ function CategorySection({ groupKey, tasks, category }: { groupKey: GroupKey; ta
           </button>
         </div>
       )}
-      {!category && <div ref={setNodeRef} className={isOver ? 'is-drop-target' : ''} />}
+      {!category && (
+        <div className={`td-category-header td-category-header-normal ${isOver ? 'is-drop-target' : ''}`} ref={setNodeRef}>
+          <span className="td-category-header-label">通常タスク</span>
+          <span className="td-badge">{tasks.length}</span>
+        </div>
+      )}
       {!isCollapsed && (
         <>
           {addOpen && category && (

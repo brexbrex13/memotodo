@@ -19,6 +19,7 @@ export function useTodoMutations() {
   const complete = useMutation({ mutationFn: (id: number) => App.CompleteTodo(id), onSuccess: invalidateLists, onError })
   const restore = useMutation({ mutationFn: (id: number) => App.RestoreTodo(id), onSuccess: invalidateLists, onError })
   const remove = useMutation({ mutationFn: (id: number) => App.DeleteTodo(id), onSuccess: invalidateLists, onError })
+  const bulkDeleteDone = useMutation({ mutationFn: () => App.BulkDeleteDoneTodos(), onSuccess: invalidateLists, onError })
   const toggleImportant = useMutation({ mutationFn: (id: number) => App.ToggleImportant(id), onSuccess: invalidateLists, onError })
 
   // スヌーズは reminder_at を書き換えるため、他の更新と同じく invalidate で一覧・詳細を再取得する
@@ -48,5 +49,5 @@ export function useTodoMutations() {
     onError,
   })
 
-  return { create, complete, restore, remove, toggleImportant, snooze, update, invalidateLists, reorder, setCategory }
+  return { create, complete, restore, remove, bulkDeleteDone, toggleImportant, snooze, update, invalidateLists, reorder, setCategory }
 }
