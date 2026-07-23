@@ -1,41 +1,68 @@
 import type { CSSProperties } from 'react'
+import { useDraggable } from '@dnd-kit/core'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Todo } from '../api/client'
 import { useUiStore } from '../state/uiStore'
 import { useTodoMutations } from '../hooks/useTodoMutations'
+import { useCategories } from '../hooks/useCategories'
+import { GroupKey } from '../lib/categoryGroups'
 import { fmtDeadline, previewText } from '../lib/format'
 import TodoDetail from './TodoDetail'
 
-interface Sortable {
+interface DragHandle {
   attributes: ReturnType<typeof useSortable>['attributes']
   listeners: ReturnType<typeof useSortable>['listeners']
-  setNodeRef: ReturnType<typeof useSortable>['setNodeRef']
-  dndStyle: CSSProperties
+  setNodeRef: (el: HTMLElement | null) => void
+  style: CSSProperties
 }
 
-export default function TodoRow({ todo, draggable = false }: { todo: Todo; draggable?: boolean }) {
-  if (draggable) {
-    return <SortableTodoRow todo={todo} />
-  }
+// sortableGroupKey: 期日なしタスク（そのグループ内で手動並び替え可）。
+// draggable: 期日ありタスク等、並び替えは不可だがカテゴリチップ／見出しへドロップして仕分け可。
+// どちらも無指定ならドラッグ不可（完了済み表示など）。
+export default function TodoRow({
+  todo,
+  sortableGroupKey,
+  draggable = false,
+}: {
+  todo: Todo
+  sortableGroupKey?: GroupKey
+  draggable?: boolean
+}) {
+  if (sortableGroupKey !== undefined) return <SortableTodoRow todo={todo} groupKey={sortableGroupKey} />
+  if (draggable) return <DraggableTodoRow todo={todo} />
   return <TodoRowContent todo={todo} />
 }
 
-function SortableTodoRow({ todo }: { todo: Todo }) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: todo.id })
-  const dndStyle = { transform: CSS.Transform.toString(transform), transition }
-  return <TodoRowContent todo={todo} sortable={{ attributes, listeners, setNodeRef, dndStyle }} />
+function SortableTodoRow({ todo, groupKey }: { todo: Todo; groupKey: GroupKey }) {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
+    id: todo.id,
+    data: { type: 'todo', todoId: todo.id, groupKey },
+  })
+  const style = { transform: CSS.Transform.toString(transform), transition }
+  return <TodoRowContent todo={todo} drag={{ attributes, listeners, setNodeRef, style }} />
 }
 
-function TodoRowContent({ todo, sortable }: { todo: Todo; sortable?: Sortable }) {
+function DraggableTodoRow({ todo }: { todo: Todo }) {
+  const { attributes, listeners, setNodeRef, transform } = useDraggable({
+    id: todo.id,
+    data: { type: 'todo', todoId: todo.id },
+  })
+  const style = { transform: CSS.Translate.toString(transform) }
+  return <TodoRowContent todo={todo} drag={{ attributes, listeners, setNodeRef, style }} />
+}
+
+function TodoRowContent({ todo, drag }: { todo: Todo; drag?: DragHandle }) {
   const activeTab = useUiStore((s) => s.activeTab)
   const openId = useUiStore((s) => s.openId)
   const detailPattern = useUiStore((s) => s.detailPattern)
   const setOpenId = useUiStore((s) => s.setOpenId)
   const { complete, restore, toggleImportant } = useTodoMutations()
+  const { data: categories } = useCategories()
   const isDone = activeTab === 'done'
   const isOpen = openId === todo.id
   const showInline = isOpen && detailPattern === 'inline'
+  const category = todo.category_id != null ? categories?.find((c) => c.id === todo.category_id) : undefined
 
   const rowClass = [
     'td-row',
@@ -47,10 +74,10 @@ function TodoRowContent({ todo, sortable }: { todo: Todo; sortable?: Sortable })
   const chipClass = todo.is_overdue && !isDone ? 'is-overdue' : todo.is_near && !isDone ? 'is-near' : ''
 
   return (
-    <div className="td-row-wrap" data-id={todo.id} ref={sortable?.setNodeRef} style={sortable?.dndStyle}>
+    <div className="td-row-wrap" data-id={todo.id} ref={drag?.setNodeRef} style={drag?.style}>
       <div className={rowClass}>
-        {sortable ? (
-          <div className="td-drag-handle" title="ドラッグして並び替え" {...sortable.attributes} {...sortable.listeners}>
+        {drag ? (
+          <div className="td-drag-handle" title="ドラッグして並び替え・カテゴリ変更" {...drag.attributes} {...drag.listeners}>
             <i className="bi bi-grip-vertical" />
           </div>
         ) : null}
@@ -59,6 +86,7 @@ function TodoRowContent({ todo, sortable }: { todo: Todo; sortable?: Sortable })
         </div>
         <div className="td-row-main">
           <div className="td-row-title" onClick={() => setOpenId(isOpen ? null : todo.id)}>
+            {category && <span className="td-category-dot" style={{ background: category.color }} title={category.name} />}
             {previewText(todo.title)}
           </div>
         </div>

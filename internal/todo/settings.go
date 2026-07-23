@@ -23,6 +23,7 @@ func defaultSettings() Settings {
 		ReminderNotifyMethod: NotifyMethod{Toast: true, BringToFront: false},
 		PeriodicNotifyMethod: NotifyMethod{Toast: true, BringToFront: false},
 		ImageOpenMethod:      "inapp",
+		CollapsedCategories:  []int64{},
 	}
 }
 
@@ -46,6 +47,7 @@ func (s *Store) LoadSettings() (Settings, error) {
 		ReminderNotifyMethod *NotifyMethod  `json:"reminder_notify_method"`
 		PeriodicNotifyMethod *NotifyMethod  `json:"periodic_notify_method"`
 		ImageOpenMethod      string         `json:"image_open_method"`
+		CollapsedCategories  []int64        `json:"collapsed_categories"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return def, nil
@@ -73,6 +75,9 @@ func (s *Store) LoadSettings() (Settings, error) {
 	if raw.ImageOpenMethod != "" {
 		merged.ImageOpenMethod = raw.ImageOpenMethod
 	}
+	if raw.CollapsedCategories != nil {
+		merged.CollapsedCategories = raw.CollapsedCategories
+	}
 	return merged, nil
 }
 
@@ -85,6 +90,7 @@ type SettingsUpdate struct {
 	ReminderNotifyMethod *NotifyMethod
 	PeriodicNotifyMethod *NotifyMethod
 	ImageOpenMethod      *string
+	CollapsedCategories  []int64
 }
 
 // SaveSettings は設定を保存する（既存設定にマージ）。
@@ -113,6 +119,9 @@ func (s *Store) SaveSettings(u SettingsUpdate) (Settings, error) {
 	}
 	if u.ImageOpenMethod != nil {
 		current.ImageOpenMethod = *u.ImageOpenMethod
+	}
+	if u.CollapsedCategories != nil {
+		current.CollapsedCategories = u.CollapsedCategories
 	}
 
 	data, err := json.MarshalIndent(current, "", "  ")

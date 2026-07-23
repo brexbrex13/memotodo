@@ -30,6 +30,10 @@ type App struct {
 	store         *todo.Store
 	scheduler     *todo.Scheduler
 	windowVisible atomic.Bool
+	// closeToTray はウィンドウを閉じずにトレイへ格納する処理（main.go 側で設定）。
+	// フレームレス化でOSの×ボタンが無くなったため、ミニタイトルバーの×ボタンから
+	// CloseToTray 経由でこれを呼び出す。
+	closeToTray func()
 }
 
 // NewApp は App を生成する。DBオープン等は startup 時に行う。
@@ -192,6 +196,14 @@ func (a *App) periodicNotifySummary() string {
 	return strings.Join(parts, "\n")
 }
 
+// CloseToTray はミニタイトルバーの×ボタンから呼ばれる。
+// OSクローズ操作（OnBeforeClose）と同じくウィンドウを隠してトレイに常駐させる。
+func (a *App) CloseToTray() {
+	if a.closeToTray != nil {
+		a.closeToTray()
+	}
+}
+
 // bringToFront はメインウィンドウを表示・前面化する。
 // トレイクリック・多重起動時の通知・通知クリック等の明示的な操作や、
 // 通知設定で「最前面に表示する」がONの場合に呼ばれる。
@@ -264,6 +276,8 @@ type CreateTodoRequest struct {
 	ReminderEnabled bool   `json:"reminder_enabled"`
 	ReminderAt      string `json:"reminder_at"`
 	IsImportant     bool   `json:"is_important"`
+	// CategoryID は所属カテゴリ（0または未指定=通常タスク）。
+	CategoryID int64 `json:"category_id"`
 }
 
 func (a *App) CreateTodo(req CreateTodoRequest) (int64, error) {
@@ -278,6 +292,7 @@ func (a *App) CreateTodo(req CreateTodoRequest) (int64, error) {
 		ReminderEnabled: req.ReminderEnabled,
 		ReminderAt:      req.ReminderAt,
 		IsImportant:     req.IsImportant,
+		CategoryID:      req.CategoryID,
 	})
 	if err != nil {
 		return 0, err
@@ -296,6 +311,8 @@ type UpdateTodoRequest struct {
 	Status          *string `json:"status"`
 	DoneAt          *string `json:"done_at"`
 	IsImportant     *bool   `json:"is_important"`
+	// CategoryID: nil=変更なし、0=通常に戻す、それ以外=そのカテゴリへ変更。
+	CategoryID *int64 `json:"category_id"`
 }
 
 func (a *App) UpdateTodo(id int64, req UpdateTodoRequest) error {
@@ -308,6 +325,7 @@ func (a *App) UpdateTodo(id int64, req UpdateTodoRequest) error {
 		Status:          req.Status,
 		DoneAt:          req.DoneAt,
 		IsImportant:     req.IsImportant,
+		CategoryID:      req.CategoryID,
 	})
 	if err != nil {
 		return err
@@ -408,6 +426,71 @@ func (a *App) SnoozeReminder(id int64, amount string) error {
 	}
 	a.scheduler.RescheduleReminders()
 	return nil
+}
+
+// --- カテゴリ ---
+
+func (a *App) GetCategories() ([]todo.Category, error) {
+	categories, err := a.store.GetCategories()
+	if err != nil {
+		return nil, err
+	}
+	if categories == nil {
+		categories = []todo.Category{}
+	}
+	return categories, nil
+}
+
+// CreateCategoryRequest はカテゴリ新規作成の入力。
+type CreateCategoryRequest struct {
+	Name  string `json:"name"`
+	Color string `json:"color"`
+}
+
+func (a *App) CreateCategory(req CreateCategoryRequest) (int64, error) {
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		return 0, fmt.Errorf("カテゴリ名を入力してください")
+	}
+	return a.store.CreateCategory(name, req.Color)
+}
+
+// UpdateCategoryRequest はカテゴリの部分更新入力。
+type UpdateCategoryRequest struct {
+	Name  *string `json:"name"`
+	Color *string `json:"color"`
+}
+
+func (a *App) UpdateCategory(id int64, req UpdateCategoryRequest) error {
+	if req.Name != nil && strings.TrimSpace(*req.Name) == "" {
+		return fmt.Errorf("カテゴリ名を入力してください")
+	}
+	ok, err := a.store.UpdateCategory(id, todo.CategoryUpdate{
+		Name:  req.Name,
+		Color: req.Color,
+	})
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("カテゴリが見つかりません")
+	}
+	return nil
+}
+
+func (a *App) DeleteCategory(id int64) error {
+	ok, err := a.store.DeleteCategory(id)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("カテゴリが見つかりません")
+	}
+	return nil
+}
+
+func (a *App) ReorderCategories(order []int64) error {
+	return a.store.ReorderCategories(order)
 }
 
 // --- 定期タスク ---
@@ -522,6 +605,7 @@ type SaveSettingsRequest struct {
 	ReminderNotifyMethod *todo.NotifyMethod `json:"reminder_notify_method"`
 	PeriodicNotifyMethod *todo.NotifyMethod `json:"periodic_notify_method"`
 	ImageOpenMethod      *string            `json:"image_open_method"`
+	CollapsedCategories  []int64            `json:"collapsed_categories"`
 }
 
 func (a *App) SaveSettings(req SaveSettingsRequest) (todo.Settings, error) {
@@ -539,6 +623,7 @@ func (a *App) SaveSettings(req SaveSettingsRequest) (todo.Settings, error) {
 		ReminderNotifyMethod: req.ReminderNotifyMethod,
 		PeriodicNotifyMethod: req.PeriodicNotifyMethod,
 		ImageOpenMethod:      req.ImageOpenMethod,
+		CollapsedCategories:  req.CollapsedCategories,
 	})
 	if err != nil {
 		return todo.Settings{}, err

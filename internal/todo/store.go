@@ -83,11 +83,55 @@ func (s *Store) migrate() error {
 			is_active           INTEGER NOT NULL DEFAULT 1,
 			created_at          TEXT    NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS categories (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			name       TEXT    NOT NULL,
+			color      TEXT    NOT NULL DEFAULT '',
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT    NOT NULL
+		)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.Exec(stmt); err != nil {
 			return fmt.Errorf("スキーマ初期化に失敗しました: %w", err)
 		}
+	}
+	if err := s.addColumnIfMissing("todos", "category_id", "INTEGER"); err != nil {
+		return err
+	}
+	return nil
+}
+
+// addColumnIfMissing はテーブルに指定カラムが無ければ ALTER TABLE で追加する。
+// ALTER TABLE ADD COLUMN は再実行するとエラーになるため、事前に存在確認する。
+func (s *Store) addColumnIfMissing(table, column, columnDef string) error {
+	rows, err := s.db.Query(fmt.Sprintf(`PRAGMA table_info(%s)`, table))
+	if err != nil {
+		return fmt.Errorf("スキーマ確認に失敗しました: %w", err)
+	}
+	defer rows.Close()
+
+	var exists bool
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notNull, pk int
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notNull, &dflt, &pk); err != nil {
+			return fmt.Errorf("スキーマ確認に失敗しました: %w", err)
+		}
+		if name == column {
+			exists = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("スキーマ確認に失敗しました: %w", err)
+	}
+	if exists {
+		return nil
+	}
+	if _, err := s.db.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN %s %s`, table, column, columnDef)); err != nil {
+		return fmt.Errorf("スキーマ更新に失敗しました: %w", err)
 	}
 	return nil
 }

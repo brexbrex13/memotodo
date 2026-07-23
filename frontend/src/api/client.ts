@@ -7,3 +7,4 @@ export type Settings = todo.Settings
 export type Link = todo.Link
 export type RecurringTask = todo.RecurringTask
 export type RecurringPanelData = todo.RecurringPanelData
+export type Category = todo.Category

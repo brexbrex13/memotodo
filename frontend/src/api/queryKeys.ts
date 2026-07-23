@@ -6,4 +6,5 @@ export const qk = {
   nearOrOverdue: () => ['nearOrOverdue'] as const,
   recurringPanel: () => ['recurringPanel'] as const,
   recurringTasks: () => ['recurringTasks'] as const,
+  categories: () => ['categories'] as const,
 }
