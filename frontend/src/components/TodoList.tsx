@@ -67,9 +67,7 @@ export default function TodoList() {
   const normalTasks = list.filter((t) => matchesGroup(t, 'normal'))
   return (
     <div className="td-card-group">
-      {normalTasks.length > 0 && (
-        <CategorySection groupKey="normal" tasks={normalTasks} />
-      )}
+      <CategorySection groupKey="normal" tasks={normalTasks} />
       {(categories ?? []).map((c) => {
         const tasks = list.filter((t) => matchesGroup(t, c.id))
         return <CategorySection key={c.id} groupKey={c.id} tasks={tasks} category={c} />
