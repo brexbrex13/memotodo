@@ -53,16 +53,6 @@ export default function TodoDetail({ todo, modal = false }: { todo: Todo; modal?
             onChange={(e) => patch({ deadline: e.target.value })} />
         </label>
         <label className="td-field">
-          <span className="td-detail-label">カテゴリ</span>
-          <select className="td-input" value={v.category_id ?? 0}
-            onChange={(e) => patch({ category_id: Number(e.target.value) || null })}>
-            <option value={0}>通常</option>
-            {(categories ?? []).map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-        </label>
-        <label className="td-field" style={{ gridColumn: '1 / -1' }}>
           <span className="td-detail-label">リマインダー</span>
           <div className="td-reminder-row">
             <label className="td-toggle">
@@ -82,6 +72,19 @@ export default function TodoDetail({ todo, modal = false }: { todo: Todo; modal?
         <RichTextEditor value={v.memo ?? ''} onChange={(html) => patch({ memo: html })} />
         <DetectedLinks links={todo.links} />
       </div>
+
+      <label className="td-field td-detail-category-field">
+        <span className="td-detail-label">
+          カテゴリ<span className="td-detail-label-hint">（一覧でのドラッグ&ドロップでも変更できます）</span>
+        </span>
+        <select className="td-input" value={v.category_id ?? 0}
+          onChange={(e) => patch({ category_id: Number(e.target.value) || null })}>
+          <option value={0}>通常</option>
+          {(categories ?? []).map((c) => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
+      </label>
 
       <div className="td-detail-footer">
         <div className="td-detail-footer-left">

@@ -72,7 +72,6 @@ export default function TodoList() {
       )}
       {(categories ?? []).map((c) => {
         const tasks = list.filter((t) => matchesGroup(t, c.id))
-        if (tasks.length === 0) return null
         return <CategorySection key={c.id} groupKey={c.id} tasks={tasks} category={c} />
       })}
     </div>
@@ -122,6 +121,7 @@ function CategorySection({ groupKey, tasks, category }: { groupKey: GroupKey; ta
             <div className="td-list">
               {noDate.map((t) => <TodoRow key={t.id} todo={t} sortableGroupKey={groupKey} />)}
               {dated.map((t) => <TodoRow key={t.id} todo={t} draggable />)}
+              {tasks.length === 0 && <div className="td-category-empty-hint">タスクをここにドラッグ</div>}
             </div>
           </SortableContext>
         </>

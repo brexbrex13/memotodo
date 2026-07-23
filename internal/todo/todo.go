@@ -44,7 +44,11 @@ const todoColumns = `id, title, memo, status, deadline, reminder_enabled, remind
 func (s *Store) GetTodos(status string) ([]Todo, error) {
 	rows, err := s.db.Query(
 		`SELECT `+todoColumns+` FROM todos WHERE status = ?
-		 ORDER BY (deadline IS NOT NULL), sort_order ASC, deadline ASC, created_at ASC`,
+		 ORDER BY
+		   (deadline IS NOT NULL),
+		   CASE WHEN deadline IS NULL THEN sort_order END ASC,
+		   deadline ASC,
+		   created_at ASC`,
 		status,
 	)
 	if err != nil {
