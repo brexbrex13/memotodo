@@ -57,6 +57,7 @@ function TodoRowContent({ todo, drag, isDragging }: { todo: Todo; drag?: DragHan
   const openId = useUiStore((s) => s.openId)
   const detailPattern = useUiStore((s) => s.detailPattern)
   const setOpenId = useUiStore((s) => s.setOpenId)
+  const setForceDetailModalId = useUiStore((s) => s.setForceDetailModalId)
   const { complete, restore, toggleImportant } = useTodoMutations()
   const { data: categories } = useCategories()
   const isDone = activeTab === 'done'
@@ -83,7 +84,12 @@ function TodoRowContent({ todo, drag, isDragging }: { todo: Todo; drag?: DragHan
           </div>
         ) : null}
         <div className="td-row-main">
-          <div className="td-row-title" onClick={() => setOpenId(isOpen ? null : todo.id)}>
+          <div
+            className="td-row-title"
+            onClick={() => setOpenId(isOpen ? null : todo.id)}
+            onContextMenu={(e) => { e.preventDefault(); setForceDetailModalId(todo.id) }}
+            title="右クリックで詳細を編集"
+          >
             {category && <span className="td-category-dot" style={{ background: category.color }} title={category.name} />}
             {previewText(todo.title)}
           </div>

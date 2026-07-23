@@ -441,33 +441,14 @@ html, body {
   font-size: 14.5px;
   line-height: 1.6;
   color: var(--text-primary);
-  white-space: nowrap;
+  cursor: pointer;
+  /* 長いタイトルや複数行タイトルを2行までプレビュー表示し、収まらない分は省略する */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
-  cursor: pointer;
 }
-
-.td-row-title-input {
-  display: block;
-  width: 100%;
-  resize: none;
-  border: none;
-  background: transparent;
-  padding: 2px 4px;
-  margin: -2px -4px;
-  border-radius: 6px;
-  font-family: inherit;
-  font-size: 14.5px;
-  line-height: 1.6;
-  color: var(--text-primary);
-  outline: none;
-  min-height: 1.6em;
-  field-sizing: content;
-  /* .td-row の user-select:none（並び替え時の誤選択防止）を編集欄では解除する */
-  user-select: text;
-  -webkit-user-select: text;
-}
-.td-row-title-input:focus { background: #fff; box-shadow: 0 0 0 2px rgba(200,96,74,.12); }
 
 .td-row-side {
   flex-shrink: 0;
