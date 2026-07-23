@@ -102,6 +102,10 @@ export function SaveSettings(arg1) {
   return window['go']['main']['App']['SaveSettings'](arg1);
 }
 
+export function SetTodoCategory(arg1, arg2) {
+  return window['go']['main']['App']['SetTodoCategory'](arg1, arg2);
+}
+
 export function SnoozeReminder(arg1, arg2) {
   return window['go']['main']['App']['SnoozeReminder'](arg1, arg2);
 }

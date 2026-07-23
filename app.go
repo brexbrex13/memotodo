@@ -381,6 +381,22 @@ func (a *App) ReorderTodos(order []int64) error {
 	return a.store.ReorderTodos(order)
 }
 
+// SetTodoCategory はメモの所属カテゴリを変更する（D&D仕分け用）。
+// categoryId は 0=通常タスクに戻す、それ以外=そのカテゴリへ変更。
+// UpdateTodo の部分更新（category_id だけを指定した *int64 送信）は、
+// フロントエンドから見て「0」と「未指定」の区別が実機で意図通りに機能しない
+// ケースが確認されたため、専用の必須引数を持つエンドポイントとして切り出す。
+func (a *App) SetTodoCategory(id int64, categoryId int64) error {
+	ok, err := a.store.UpdateTodo(id, todo.TodoUpdate{CategoryID: &categoryId})
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("メモが見つかりません")
+	}
+	return nil
+}
+
 // ToggleImportant は重要フラグを反転する。
 func (a *App) ToggleImportant(id int64) error {
 	t, ok, err := a.store.GetTodo(id)
