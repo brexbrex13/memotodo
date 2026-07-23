@@ -1,6 +1,7 @@
 import { Todo, main } from '../api/client'
 import { useUiStore, TodoDraft } from '../state/uiStore'
 import { useTodoMutations } from '../hooks/useTodoMutations'
+import { useCategories } from '../hooks/useCategories'
 import RichTextEditor from './RichTextEditor'
 import DetectedLinks from './DetectedLinks'
 
@@ -15,6 +16,7 @@ export default function TodoDetail({ todo, modal = false }: { todo: Todo; modal?
   const clearDraft = useUiStore((s) => s.clearDraft)
   const setOpenId = useUiStore((s) => s.setOpenId)
   const { update, remove } = useTodoMutations()
+  const { data: categories } = useCategories()
   const v = merged(todo, draft)
 
   const patch = (p: Partial<TodoDraft>) => setDraft(todo.id, { ...(draft ?? {}), ...p })
@@ -26,6 +28,7 @@ export default function TodoDetail({ todo, modal = false }: { todo: Todo; modal?
       deadline: v.deadline || '',
       reminder_enabled: !!v.reminder_enabled,
       reminder_at: v.reminder_enabled && v.reminder_at ? `${v.reminder_at}:00` : '',
+      category_id: v.category_id ?? 0,
     })
     update.mutate({ id: todo.id, req }, { onSuccess: () => { clearDraft(todo.id); setOpenId(null) } })
   }
@@ -50,6 +53,16 @@ export default function TodoDetail({ todo, modal = false }: { todo: Todo; modal?
             onChange={(e) => patch({ deadline: e.target.value })} />
         </label>
         <label className="td-field">
+          <span className="td-detail-label">カテゴリ</span>
+          <select className="td-input" value={v.category_id ?? 0}
+            onChange={(e) => patch({ category_id: Number(e.target.value) || null })}>
+            <option value={0}>通常</option>
+            {(categories ?? []).map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </label>
+        <label className="td-field" style={{ gridColumn: '1 / -1' }}>
           <span className="td-detail-label">リマインダー</span>
           <div className="td-reminder-row">
             <label className="td-toggle">

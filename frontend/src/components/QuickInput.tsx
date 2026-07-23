@@ -1,16 +1,39 @@
 import { useState, useRef, useEffect } from 'react'
 import { main } from '../api/client'
 import { useTodoMutations } from '../hooks/useTodoMutations'
+import { useCategories } from '../hooks/useCategories'
 import { useUiStore } from '../state/uiStore'
 
-export default function QuickInput() {
+export default function QuickInput({
+  forceCategoryId,
+  compact = false,
+  autoFocus = false,
+  onSubmitted,
+}: {
+  // 未指定なら現在のカテゴリ絞り込み(categoryFilter)に従う。指定時はそれを優先する
+  // （カテゴリセクションの「＋」からのインライン追加用）。
+  forceCategoryId?: number | null
+  compact?: boolean
+  autoFocus?: boolean
+  onSubmitted?: () => void
+}) {
   const [value, setValue] = useState('')
   const ref = useRef<HTMLTextAreaElement>(null)
   const { create } = useTodoMutations()
+  const { data: categories } = useCategories()
+  const categoryFilter = useUiStore((s) => s.categoryFilter)
   const focusToken = useUiStore((s) => s.quickInputFocusToken)
+
+  const categoryId = forceCategoryId !== undefined ? forceCategoryId : typeof categoryFilter === 'number' ? categoryFilter : null
+  const targetCategory = categoryId != null ? categories?.find((c) => c.id === categoryId) : undefined
+
   useEffect(() => {
     if (focusToken > 0) ref.current?.focus()
   }, [focusToken])
+
+  useEffect(() => {
+    if (autoFocus) ref.current?.focus()
+  }, [autoFocus])
 
   // 内容に合わせて高さを自動調整する（max-height はCSSで220pxに制限、超過分はスクロール）。
   // border-box なので下端にスクロールバーが出ないよう枠線分(offsetHeight-clientHeight)を足す。
@@ -33,8 +56,9 @@ export default function QuickInput() {
         reminder_enabled: false,
         reminder_at: '',
         is_important: false,
+        category_id: categoryId ?? 0,
       }),
-      { onSuccess: () => { setValue(''); ref.current?.focus() } },
+      { onSuccess: () => { setValue(''); ref.current?.focus(); onSubmitted?.() } },
     )
   }
 
@@ -59,19 +83,24 @@ export default function QuickInput() {
     else submit()
   }
 
+  const label = targetCategory ? `「${targetCategory.name}」に登録` : 'タスクを登録'
+  const placeholder = targetCategory
+    ? `「${targetCategory.name}」にメモを入力してEnterで追加`
+    : 'メモを入力してEnterで追加（Alt+Enterで改行）'
+
   return (
-    <div className="td-quick-input-wrap">
-      <div className="td-quick-input-label">タスクを登録</div>
+    <div className={`td-quick-input-wrap ${compact ? 'is-compact' : ''}`}>
+      {!compact && <div className="td-quick-input-label">{label}</div>}
       <textarea
         ref={ref}
         className="td-quick-input"
         rows={1}
-        placeholder="メモを入力してEnterで追加（Alt+Enterで改行）"
+        placeholder={placeholder}
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={onKeyDown}
       />
-      <div className="td-quick-input-hint">Enter で追加　・　Alt+Enter で改行</div>
+      {!compact && <div className="td-quick-input-hint">Enter で追加　・　Alt+Enter で改行</div>}
     </div>
   )
 }

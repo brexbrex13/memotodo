@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useSettings } from './hooks/useSettings'
 import { useTodos, useTodo } from './hooks/useTodos'
 import { useUiStore } from './state/uiStore'
 import { useInlineDetailOutsideClose } from './hooks/useInlineDetailOutsideClose'
 import { useAppEvents } from './hooks/useAppEvents'
-import Tabs from './components/Tabs'
+import TitleBar from './components/TitleBar'
+import TodoWorkspace from './components/TodoWorkspace'
 import TodoList from './components/TodoList'
 import QuickInput from './components/QuickInput'
 import DetailModal from './components/DetailModal'
@@ -24,7 +25,8 @@ export default function App() {
   const forceDetailModalId = useUiStore((s) => s.forceDetailModalId)
   const setForceDetailModalId = useUiStore((s) => s.setForceDetailModalId)
   const { data: forcedTodo } = useTodo(forceDetailModalId)
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const settingsOpen = useUiStore((s) => s.settingsOpen)
+  const setSettingsOpen = useUiStore((s) => s.setSettingsOpen)
 
   useInlineDetailOutsideClose()
   useAppEvents()
@@ -37,24 +39,13 @@ export default function App() {
 
   return (
     <div className="td-app">
-      <header className="td-header">
-        <div className="td-header-inner">
-          <div className="td-header-left">
-            <span className="td-logo-mark" />
-            <span className="td-header-title">MemoTodo</span>
-          </div>
-          <div className="td-header-actions">
-            <button className="td-icon-btn td-btn-settings" title="設定" onClick={() => setSettingsOpen(true)}>
-              <i className="bi bi-gear" />
-            </button>
-          </div>
-        </div>
-      </header>
+      <TitleBar />
       <main className="td-main">
         <div className="td-content">
-          <Tabs />
           {activeTab === 'pending' && <QuickInput />}
-          <div className="td-list-wrap"><TodoList /></div>
+          <div className="td-list-wrap">
+            {activeTab === 'pending' ? <TodoWorkspace /> : <TodoList />}
+          </div>
         </div>
       </main>
       <RecurringTab />

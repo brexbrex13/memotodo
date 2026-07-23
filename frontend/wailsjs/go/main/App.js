@@ -6,8 +6,16 @@ export function BulkDeleteDoneTodos() {
   return window['go']['main']['App']['BulkDeleteDoneTodos']();
 }
 
+export function CloseToTray() {
+  return window['go']['main']['App']['CloseToTray']();
+}
+
 export function CompleteTodo(arg1) {
   return window['go']['main']['App']['CompleteTodo'](arg1);
+}
+
+export function CreateCategory(arg1) {
+  return window['go']['main']['App']['CreateCategory'](arg1);
 }
 
 export function CreateRecurringTask(arg1) {
@@ -18,12 +26,20 @@ export function CreateTodo(arg1) {
   return window['go']['main']['App']['CreateTodo'](arg1);
 }
 
+export function DeleteCategory(arg1) {
+  return window['go']['main']['App']['DeleteCategory'](arg1);
+}
+
 export function DeleteRecurringTask(arg1) {
   return window['go']['main']['App']['DeleteRecurringTask'](arg1);
 }
 
 export function DeleteTodo(arg1) {
   return window['go']['main']['App']['DeleteTodo'](arg1);
+}
+
+export function GetCategories() {
+  return window['go']['main']['App']['GetCategories']();
 }
 
 export function GetNearOrOverdueMemos() {
@@ -66,6 +82,10 @@ export function OpenURL(arg1) {
   return window['go']['main']['App']['OpenURL'](arg1);
 }
 
+export function ReorderCategories(arg1) {
+  return window['go']['main']['App']['ReorderCategories'](arg1);
+}
+
 export function ReorderTodos(arg1) {
   return window['go']['main']['App']['ReorderTodos'](arg1);
 }
@@ -92,6 +112,10 @@ export function ToggleImportant(arg1) {
 
 export function ToggleRecurringTask(arg1) {
   return window['go']['main']['App']['ToggleRecurringTask'](arg1);
+}
+
+export function UpdateCategory(arg1, arg2) {
+  return window['go']['main']['App']['UpdateCategory'](arg1, arg2);
 }
 
 export function UpdateRecurringTask(arg1, arg2) {

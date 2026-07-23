@@ -36,7 +36,6 @@
   --radius:    8px;
   --radius-sm: 5px;
 
-  --header-h: 52px;
   --panel-w:  520px;
 }
 
@@ -62,52 +61,64 @@ html, body {
 }
 
 /* ========================================
-   ヘッダー
+   ミニタイトルバー（フレームレス化に伴うOSタイトルバー代替）
    ======================================== */
-.td-header {
-  height: var(--header-h);
+.td-titlebar {
+  height: 38px;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
-  position: sticky;
-  top: 0;
-  z-index: 100;
-}
-
-.td-header-inner {
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 0 24px;
-  height: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding: 0 10px 0 16px;
+  /* ウィンドウ移動用のドラッグ領域。子要素側で no-drag に戻す。 */
+  --wails-draggable: drag;
 }
 
-.td-header-left {
+.td-titlebar-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .td-logo-mark {
   display: block;
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   background: var(--accent);
   border-radius: 2px;
   transform: rotate(12deg);
 }
 
-.td-header-title {
-  font-size: 15px;
+.td-titlebar-title {
+  font-size: 12.5px;
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--text-primary);
+  color: var(--text-secondary);
 }
 
-.td-header-actions { display: flex; align-items: center; gap: 8px; }
+.td-titlebar-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  --wails-draggable: no-drag;
+}
+
+.td-btn-done-toggle { position: relative; }
+.td-btn-done-toggle.is-active { background: var(--accent-light); color: var(--accent); }
+.td-btn-done-toggle .td-badge {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  font-size: 9.5px;
+  padding: 0 5px;
+  min-width: 15px;
+  line-height: 15px;
+}
+
+.td-btn-close:hover { background: var(--danger-bg); color: var(--danger); }
 
 /* ========================================
    メインレイアウト
@@ -123,47 +134,6 @@ html, body {
   margin: 0 auto 0 96px;
 }
 
-/* ========================================
-   タブ
-   ======================================== */
-.td-tabs-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 20px;
-}
-
-.td-tabs {
-  display: flex;
-  gap: 4px;
-  border-bottom: 2px solid var(--border);
-}
-
-.td-tab {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-muted);
-  padding: 8px 14px 10px;
-  margin-bottom: -2px;
-  border-bottom: 2px solid transparent;
-  transition: color .15s, border-color .15s;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.td-tab:hover { color: var(--text-primary); }
-
-.td-tab.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-  font-weight: 700;
-}
-
 .td-badge {
   background: var(--accent-light);
   color: var(--accent);
@@ -175,7 +145,116 @@ html, body {
   text-align: center;
 }
 
-.td-bulk-delete-bar { display: flex; gap: 6px; }
+/* ========================================
+   フィルタ行（カテゴリチップ・期日ありのみトグル）
+   ======================================== */
+.td-filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.td-dated-only-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.td-filter-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.td-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.td-chip:hover { border-color: var(--accent); color: var(--text-primary); }
+.td-chip.active { background: var(--accent-light); border-color: var(--accent); color: var(--accent); font-weight: 700; }
+.td-chip.is-drop-target { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(200,96,74,.18); }
+.td-chip .td-badge { background: rgba(0,0,0,.06); color: inherit; }
+.td-chip.active .td-badge { background: rgba(200,96,74,.16); color: var(--accent); }
+
+.td-chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--chip-color, var(--text-muted));
+}
+
+.td-chip-manage { flex-shrink: 0; }
+
+/* カテゴリセクション（「すべて」表示） */
+.td-category-section + .td-category-section { margin-top: 0; }
+
+.td-category-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  cursor: default;
+  transition: background .12s;
+}
+.td-category-header.is-drop-target { background: var(--accent-light); }
+.td-category-collapse-btn { flex-shrink: 0; }
+.td-category-header-label { font-size: 13px; font-weight: 700; color: var(--text-primary); flex: 1; }
+.td-category-add-btn { flex-shrink: 0; }
+
+.td-category-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+  margin-right: 4px;
+}
+
+.td-category-inline-add { padding: 0 16px 12px; }
+.td-quick-input-wrap.is-compact .td-quick-input { font-size: 13.5px; padding: 10px 14px; }
+
+/* カテゴリ管理モーダル */
+.td-category-list { display: flex; flex-direction: column; gap: 8px; }
+.td-category-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  flex-wrap: wrap;
+}
+.td-category-color-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+.td-category-name-input { flex: 1; min-width: 100px; }
+.td-category-color-picker { display: flex; gap: 4px; flex-shrink: 0; }
+.td-color-swatch {
+  width: 18px; height: 18px; border-radius: 50%; border: 2px solid transparent;
+  cursor: pointer; padding: 0;
+}
+.td-color-swatch.is-selected { border-color: var(--text-primary); }
+.td-category-row-actions { display: flex; gap: 2px; flex-shrink: 0; }
+.td-category-add-row { display: flex; gap: 8px; margin-top: 4px; }
+.td-category-add-row .td-input { flex: 1; }
 
 /* ========================================
    クイック入力
@@ -243,18 +322,25 @@ html, body {
   font-size: 13px;
 }
 
-/* 期日なし／期日ありを別カードに分けて表示するためのラッパー */
-.td-card-group {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
 .td-card {
   background: var(--bg-panel);
   border-radius: 16px;
   box-shadow: var(--shadow-sm);
   overflow: hidden;
+}
+
+/* 「すべて」表示：通常タスク＋カテゴリセクションを縦に積むラッパー */
+.td-card-group {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.td-category-section .td-category-header {
+  position: sticky;
+  top: 0;
+  background: var(--bg-panel);
+  z-index: 5;
 }
 
 .td-section-label {
@@ -518,7 +604,7 @@ html, body {
    ======================================== */
 .td-recurring-tab {
   position: absolute;
-  top: 96px;
+  top: 54px;
   right: 0;
   width: 52px;
   height: 156px;
@@ -1038,7 +1124,7 @@ html, body {
 }
 
 @media (max-width: 600px) {
-  .td-header-inner { padding: 0 14px; }
+  .td-titlebar { padding: 0 6px 0 10px; }
   .td-main { padding: 16px 12px 32px; }
   .td-recurring-panel { width: 100%; }
   .td-detail-grid { grid-template-columns: 1fr; }
@@ -1046,7 +1132,7 @@ html, body {
 }
 
 @media (max-width: 400px) {
-  .td-header-title { font-size: 13px; }
+  .td-titlebar-title { font-size: 11px; }
 }
 
 /* === Discord 風ハイブリッド通知トースト（Phase C） === */

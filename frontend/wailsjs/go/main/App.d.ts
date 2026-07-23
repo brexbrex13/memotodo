@@ -5,15 +5,23 @@ import {todo} from '../models';
 
 export function BulkDeleteDoneTodos():Promise<number>;
 
+export function CloseToTray():Promise<void>;
+
 export function CompleteTodo(arg1:number):Promise<void>;
+
+export function CreateCategory(arg1:main.CreateCategoryRequest):Promise<number>;
 
 export function CreateRecurringTask(arg1:main.CreateRecurringTaskRequest):Promise<number>;
 
 export function CreateTodo(arg1:main.CreateTodoRequest):Promise<number>;
 
+export function DeleteCategory(arg1:number):Promise<void>;
+
 export function DeleteRecurringTask(arg1:number):Promise<void>;
 
 export function DeleteTodo(arg1:number):Promise<void>;
+
+export function GetCategories():Promise<Array<todo.Category>>;
 
 export function GetNearOrOverdueMemos():Promise<Array<todo.Todo>>;
 
@@ -35,6 +43,8 @@ export function OpenLocalPath(arg1:string):Promise<void>;
 
 export function OpenURL(arg1:string):Promise<void>;
 
+export function ReorderCategories(arg1:Array<number>):Promise<void>;
+
 export function ReorderTodos(arg1:Array<number>):Promise<void>;
 
 export function RestoreTodo(arg1:number):Promise<void>;
@@ -48,6 +58,8 @@ export function SnoozeReminder(arg1:number,arg2:string):Promise<void>;
 export function ToggleImportant(arg1:number):Promise<void>;
 
 export function ToggleRecurringTask(arg1:number):Promise<void>;
+
+export function UpdateCategory(arg1:number,arg2:main.UpdateCategoryRequest):Promise<void>;
 
 export function UpdateRecurringTask(arg1:number,arg2:main.UpdateRecurringTaskRequest):Promise<void>;
 

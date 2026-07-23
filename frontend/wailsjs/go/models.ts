@@ -1,5 +1,19 @@
 export namespace main {
-	
+
+	export class CreateCategoryRequest {
+	    name: string;
+	    color: string;
+
+	    static createFrom(source: any = {}) {
+	        return new CreateCategoryRequest(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.color = source["color"];
+	    }
+	}
 	export class CreateRecurringTaskRequest {
 	    title: string;
 	    period_type: string;
@@ -25,11 +39,12 @@ export namespace main {
 	    reminder_enabled: boolean;
 	    reminder_at: string;
 	    is_important: boolean;
-	
+	    category_id: number;
+
 	    static createFrom(source: any = {}) {
 	        return new CreateTodoRequest(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.title = source["title"];
@@ -38,6 +53,7 @@ export namespace main {
 	        this.reminder_enabled = source["reminder_enabled"];
 	        this.reminder_at = source["reminder_at"];
 	        this.is_important = source["is_important"];
+	        this.category_id = source["category_id"];
 	    }
 	}
 	export class SaveSettingsRequest {
@@ -48,6 +64,7 @@ export namespace main {
 	    reminder_notify_method?: todo.NotifyMethod;
 	    periodic_notify_method?: todo.NotifyMethod;
 	    image_open_method?: string;
+	    collapsed_categories: number[];
 
 	    static createFrom(source: any = {}) {
 	        return new SaveSettingsRequest(source);
@@ -62,6 +79,7 @@ export namespace main {
 	        this.reminder_notify_method = this.convertValues(source["reminder_notify_method"], todo.NotifyMethod);
 	        this.periodic_notify_method = this.convertValues(source["periodic_notify_method"], todo.NotifyMethod);
 	        this.image_open_method = source["image_open_method"];
+	        this.collapsed_categories = source["collapsed_categories"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -81,6 +99,20 @@ export namespace main {
 		    }
 		    return a;
 		}
+	}
+	export class UpdateCategoryRequest {
+	    name?: string;
+	    color?: string;
+
+	    static createFrom(source: any = {}) {
+	        return new UpdateCategoryRequest(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.color = source["color"];
+	    }
 	}
 	export class UpdateRecurringTaskRequest {
 	    title?: string;
@@ -111,28 +143,50 @@ export namespace main {
 	    status?: string;
 	    done_at?: string;
 	    is_important?: boolean;
-	
+	    category_id?: number;
+
 	    static createFrom(source: any = {}) {
 	        return new UpdateTodoRequest(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.title = source["title"];
 	        this.memo = source["memo"];
 	        this.deadline = source["deadline"];
 	        this.reminder_enabled = source["reminder_enabled"];
-	        this.reminder_at = source["reminder_at"];
 	        this.status = source["status"];
 	        this.done_at = source["done_at"];
 	        this.is_important = source["is_important"];
+	        this.reminder_at = source["reminder_at"];
+	        this.category_id = source["category_id"];
 	    }
 	}
 
 }
 
 export namespace todo {
-	
+
+	export class Category {
+	    id: number;
+	    name: string;
+	    color: string;
+	    sort_order: number;
+	    created_at: string;
+
+	    static createFrom(source: any = {}) {
+	        return new Category(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.color = source["color"];
+	        this.sort_order = source["sort_order"];
+	        this.created_at = source["created_at"];
+	    }
+	}
 	export class Link {
 	    type: string;
 	    value: string;
@@ -252,6 +306,7 @@ export namespace todo {
 	    reminder_notify_method: NotifyMethod;
 	    periodic_notify_method: NotifyMethod;
 	    image_open_method: string;
+	    collapsed_categories: number[];
 
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -266,6 +321,7 @@ export namespace todo {
 	        this.reminder_notify_method = this.convertValues(source["reminder_notify_method"], NotifyMethod);
 	        this.periodic_notify_method = this.convertValues(source["periodic_notify_method"], NotifyMethod);
 	        this.image_open_method = source["image_open_method"];
+	        this.collapsed_categories = source["collapsed_categories"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -302,11 +358,12 @@ export namespace todo {
 	    is_overdue: boolean;
 	    is_near: boolean;
 	    links?: Link[];
-	
+	    category_id: number | null;
+
 	    static createFrom(source: any = {}) {
 	        return new Todo(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -324,6 +381,7 @@ export namespace todo {
 	        this.is_overdue = source["is_overdue"];
 	        this.is_near = source["is_near"];
 	        this.links = this.convertValues(source["links"], Link);
+	        this.category_id = source["category_id"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

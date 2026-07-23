@@ -18,6 +18,17 @@ type Todo struct {
 	IsOverdue       bool   `json:"is_overdue"`
 	IsNear          bool   `json:"is_near"`
 	Links           []Link `json:"links,omitempty"`
+	// CategoryID はタスクの所属カテゴリ。nilは「通常タスク」（未分類）を表す。
+	CategoryID *int64 `json:"category_id"`
+}
+
+// Category はタスクを整理するための「箱」。1タスクにつき最大1つ割り当てられる。
+type Category struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	Color     string `json:"color"`
+	SortOrder int64  `json:"sort_order"`
+	CreatedAt string `json:"created_at"`
 }
 
 // Link はメモ本文から検出したURL/パスを表す。
@@ -56,6 +67,8 @@ type Settings struct {
 	PeriodicNotifyMethod NotifyMethod `json:"periodic_notify_method"`
 	// メモの画像をクリックしたときの開き方。"inapp"（アプリ内ライトボックス）| "system"（OS標準の画像ビューワ）。
 	ImageOpenMethod string `json:"image_open_method"`
+	// CollapsedCategories は「すべて」表示で折りたたまれているカテゴリIDの一覧。
+	CollapsedCategories []int64 `json:"collapsed_categories"`
 }
 
 // NotifyMethod は通知の出し方（アプリ内トーストとの併用可否）。
@@ -87,6 +100,15 @@ type TodoUpdate struct {
 	Status          *string `json:"status,omitempty"`
 	DoneAt          *string `json:"done_at,omitempty"`
 	IsImportant     *bool   `json:"is_important,omitempty"`
+	// CategoryID: nil=変更なし、0=通常（NULL）に戻す、それ以外=そのカテゴリへ変更。
+	CategoryID *int64 `json:"category_id,omitempty"`
+}
+
+// CategoryUpdate はカテゴリの部分更新に使うフィールド（nilなら未指定）。
+type CategoryUpdate struct {
+	Name      *string
+	Color     *string
+	SortOrder *int64
 }
 
 // RecurringTaskUpdate は定期タスク定義の部分更新に使うフィールド。

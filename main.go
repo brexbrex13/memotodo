@@ -95,6 +95,25 @@ func main() {
 		_ = todo.SaveWindowState(dataDir, todo.WindowState{Width: w, Height: h, X: x, Y: y, Maximized: maximized})
 	}
 
+	// hideToTray はウィンドウを閉じずにトレイへ格納する一連の処理。
+	// OSクローズ操作（OnBeforeClose）とフロントエンドのミニタイトルバー×ボタン
+	// （App.CloseToTray）の両方から呼ばれる共通ロジック。
+	hideToTray := func(ctx context.Context) {
+		saveWindowState(ctx)
+		// 隠れる直前にまずフラグを倒す。この後に発火するリマインダーは
+		// アプリ内トーストが見えないので、ネイティブ通知を出す側へ回す。
+		app.windowVisible.Store(false)
+		// 定期通知トーストはメインウィンドウが隠れたら消しておく
+		// （再度開いたときに古い通知が残っているのを防ぐため）。
+		wailsruntime.EventsEmit(ctx, "todo:window-hidden")
+		wailsruntime.WindowHide(ctx)
+	}
+	app.closeToTray = func() {
+		if app.ctx != nil {
+			hideToTray(app.ctx)
+		}
+	}
+
 	// /todo-images/ 配下は SaveImage で保存した画像ファイルをディスクから配信する。
 	// それ以外は埋め込みフロントエンド資産（frontend/）を配信する。
 	imagesMiddleware := func(next http.Handler) http.Handler {
@@ -134,6 +153,7 @@ func main() {
 			Middleware: imagesMiddleware,
 		},
 		BackgroundColour: &options.RGBA{R: 247, G: 246, B: 243, A: 1},
+		Frameless:        true,
 		OnStartup: func(ctx context.Context) {
 			app.startup(ctx)
 			// Width/Height/WindowStartState は options.App 経由で起動時に反映されるが、
@@ -144,19 +164,13 @@ func main() {
 		},
 		OnShutdown: app.shutdown,
 		OnBeforeClose: func(ctx context.Context) bool {
-			saveWindowState(ctx)
 			// ウィンドウを閉じてもアプリは常駐させ、トレイに残す。
 			// トレイの「終了」メニューからのみ完全終了する。
 			if quitting {
+				saveWindowState(ctx)
 				return false
 			}
-			// 隠れる直前にまずフラグを倒す。この後に発火するリマインダーは
-			// アプリ内トーストが見えないので、ネイティブ通知を出す側へ回す。
-			app.windowVisible.Store(false)
-			// 定期通知トーストはメインウィンドウが隠れたら消しておく
-			// （再度開いたときに古い通知が残っているのを防ぐため）。
-			wailsruntime.EventsEmit(ctx, "todo:window-hidden")
-			wailsruntime.WindowHide(ctx)
+			hideToTray(ctx)
 			return true
 		},
 		Bind: []interface{}{

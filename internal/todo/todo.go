@@ -15,11 +15,12 @@ func scanTodo(row interface {
 }) (Todo, error) {
 	var t Todo
 	var deadline, reminderAt, doneAt sql.NullString
+	var categoryID sql.NullInt64
 	var reminderEnabled, reminded, isImportant int
 	err := row.Scan(
 		&t.ID, &t.Title, &t.Memo, &t.Status, &deadline,
 		&reminderEnabled, &reminderAt, &reminded,
-		&t.CreatedAt, &doneAt, &isImportant, &t.SortOrder,
+		&t.CreatedAt, &doneAt, &isImportant, &t.SortOrder, &categoryID,
 	)
 	if err != nil {
 		return Todo{}, err
@@ -30,10 +31,13 @@ func scanTodo(row interface {
 	t.ReminderEnabled = reminderEnabled != 0
 	t.Reminded = reminded != 0
 	t.IsImportant = isImportant != 0
+	if categoryID.Valid {
+		t.CategoryID = &categoryID.Int64
+	}
 	return t, nil
 }
 
-const todoColumns = `id, title, memo, status, deadline, reminder_enabled, reminder_at, reminded, created_at, done_at, is_important, sort_order`
+const todoColumns = `id, title, memo, status, deadline, reminder_enabled, reminder_at, reminded, created_at, done_at, is_important, sort_order, category_id`
 
 // GetTodos はメモ一覧を返す。並び順：期日なし→期日あり。
 // 期日なしは sort_order 昇順（手動並び替え）、期日ありは期日昇順。
@@ -94,6 +98,8 @@ type CreateTodoInput struct {
 	ReminderEnabled bool
 	ReminderAt      string
 	IsImportant     bool
+	// CategoryID は所属カテゴリ（0=通常タスク）。
+	CategoryID int64
 }
 
 // CreateTodo はメモを登録して新規IDを返す。
@@ -109,10 +115,10 @@ func (s *Store) CreateTodo(in CreateTodoInput) (int64, error) {
 	}
 
 	res, err := s.db.Exec(
-		`INSERT INTO todos (title, memo, deadline, reminder_enabled, reminder_at, is_important, sort_order, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO todos (title, memo, deadline, reminder_enabled, reminder_at, is_important, sort_order, created_at, category_id)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		in.Title, in.Memo, nullIfEmpty(in.Deadline), boolToInt(in.ReminderEnabled), nullIfEmpty(in.ReminderAt),
-		boolToInt(in.IsImportant), nextOrder, nowISO(),
+		boolToInt(in.IsImportant), nextOrder, nowISO(), nullIfZero(in.CategoryID),
 	)
 	if err != nil {
 		return 0, err
@@ -125,6 +131,14 @@ func nullIfEmpty(s string) interface{} {
 		return nil
 	}
 	return s
+}
+
+// nullIfZero は 0（=通常タスク／カテゴリなしのセンチネル）を NULL に変換する。
+func nullIfZero(id int64) interface{} {
+	if id == 0 {
+		return nil
+	}
+	return id
 }
 
 func boolToInt(b bool) int {
@@ -174,6 +188,9 @@ func (s *Store) UpdateTodo(id int64, u TodoUpdate) (bool, error) {
 	}
 	if u.IsImportant != nil {
 		add("is_important", boolToInt(*u.IsImportant))
+	}
+	if u.CategoryID != nil {
+		add("category_id", nullIfZero(*u.CategoryID))
 	}
 
 	if set == "" {

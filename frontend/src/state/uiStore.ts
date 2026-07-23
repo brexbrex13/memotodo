@@ -11,6 +11,8 @@ export interface TodoDraft {
   deadline?: string | null
   reminder_enabled?: boolean
   reminder_at?: string | null
+  // undefined=未変更、null=通常タスクに戻す、number=そのカテゴリへ変更
+  category_id?: number | null
 }
 
 export type RecurringOpenId = number | 'new' | null
@@ -57,7 +59,18 @@ interface UiState {
   setForceDetailModalId: (id: number | null) => void
   quickInputFocusToken: number
   requestQuickInputFocus: () => void
+  // 「期日ありのみ」トグル。ONの間はカテゴリのグルーピングを解除し、
+  // 期日ありタスクのみを期日の近い順のフラット一覧で表示する（永続化しないUI状態）。
+  datedOnly: boolean
+  setDatedOnly: (v: boolean) => void
+  // カテゴリでの絞り込み（'all'=すべて／'normal'=通常のみ／数値=カテゴリID）。
+  categoryFilter: CategoryFilter
+  setCategoryFilter: (v: CategoryFilter) => void
+  settingsOpen: boolean
+  setSettingsOpen: (v: boolean) => void
 }
+
+export type CategoryFilter = 'all' | 'normal' | number
 
 export const useUiStore = create<UiState>((set) => ({
   activeTab: 'pending',
@@ -100,4 +113,10 @@ export const useUiStore = create<UiState>((set) => ({
   setForceDetailModalId: (id) => set({ forceDetailModalId: id }),
   quickInputFocusToken: 0,
   requestQuickInputFocus: () => set((s) => ({ quickInputFocusToken: s.quickInputFocusToken + 1 })),
+  datedOnly: false,
+  setDatedOnly: (v) => set({ datedOnly: v }),
+  categoryFilter: 'all',
+  setCategoryFilter: (v) => set({ categoryFilter: v }),
+  settingsOpen: false,
+  setSettingsOpen: (v) => set({ settingsOpen: v }),
 }))
