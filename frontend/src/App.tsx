@@ -34,6 +34,7 @@ import { TaskDetail, DraftHandle } from "./TaskDetail";
 import { SeriesForm } from "./SeriesForm";
 import { SettingsForm } from "./SettingsForm";
 import { CategoryManager } from "./CategoryManager";
+import { Icon } from "./Icons";
 
 function Bell() {
   return (
@@ -772,27 +773,30 @@ export default function App() {
           <div className="task-filters" aria-label="タスクの絞り込み">
             <button
               aria-label="検索"
+              aria-expanded={search}
               data-tip="検索 Ctrl+F"
               onClick={() => setSearch(!search)}
             >
-              ⌕
+              <Icon name="search" />
             </button>
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={dated}
-                onChange={(e) => setDated(e.target.checked)}
-              />
+            <button
+              aria-label="期限あり"
+              aria-pressed={dated}
+              data-tip="期限があるタスクだけ表示"
+              onClick={() => setDated(!dated)}
+            >
+              <Icon name="clock" />
               期限あり
-            </label>
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={important}
-                onChange={(e) => setImportant(e.target.checked)}
-              />
+            </button>
+            <button
+              aria-label="重要"
+              aria-pressed={important}
+              data-tip="重要なタスクだけ表示"
+              onClick={() => setImportant(!important)}
+            >
+              <Icon name="star" filled={important} />
               重要
-            </label>
+            </button>
           </div>
           {search && (
             <input
@@ -978,7 +982,9 @@ export default function App() {
                     <button
                       className="series-title"
                       onClick={() =>
-                        void api("OpenFromNotice", n.id, n.task_id).catch(report)
+                        void api("OpenFromNotice", n.id, n.task_id).catch(
+                          report,
+                        )
                       }
                     >
                       {n.title}

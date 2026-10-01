@@ -1265,3 +1265,256 @@ textarea::placeholder {
 .category {
   color-scheme: light;
 }
+
+/* Compact, consistent controls; category colours remain user-owned. */
+button {
+  transition:
+    background-color 120ms,
+    border-color 120ms,
+    color 120ms;
+}
+.quick textarea {
+  border-radius: 8px;
+  padding-left: 12px;
+}
+.quick-clock {
+  border-radius: 6px;
+}
+.filters {
+  gap: 4px;
+  padding: 2px 0 8px;
+  border-bottom: 1px solid var(--border);
+}
+.filters > button {
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 500;
+}
+.filters > button:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.filters > button.active {
+  background: var(--hover);
+  border-color: var(--border-hover);
+  color: var(--text);
+  font-weight: 650;
+}
+.filters .recurring-tab {
+  position: relative;
+  margin-right: 12px;
+}
+.filters .recurring-tab::after {
+  content: "";
+  position: absolute;
+  right: -9px;
+  top: 7px;
+  bottom: 7px;
+  border-right: 1px solid var(--border);
+}
+.task-filters {
+  gap: 5px;
+  margin-bottom: 12px;
+}
+.task-filters > button {
+  gap: 5px;
+  height: 29px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+}
+.task-filters > button:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.task-filters > button[aria-pressed="true"],
+.task-filters > button[aria-expanded="true"] {
+  border-color: var(--border);
+  background: var(--hover);
+  color: var(--text);
+}
+.task-filters svg {
+  width: 15px;
+  height: 15px;
+}
+.search {
+  border-radius: 7px;
+}
+.deadline-band {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 16px;
+  padding: 7px 12px;
+}
+.band-group {
+  flex: 0 1 auto;
+  max-width: 100%;
+  gap: 4px;
+}
+.band-label {
+  min-width: 0;
+  padding: 3px 4px;
+  font-weight: 600;
+}
+.band-group .band-items {
+  flex: 0 1 auto;
+  overflow: hidden;
+  gap: 4px;
+}
+.band-items > button {
+  flex-shrink: 1;
+  border-radius: 5px;
+  max-width: 160px;
+}
+.band-items .band-more {
+  flex-shrink: 0;
+}
+.task-detail header {
+  padding: 9px 12px;
+  gap: 8px;
+}
+.task-detail header h2 {
+  font-size: 13px;
+  font-weight: 600;
+  flex: 1;
+}
+.detail-tools {
+  display: flex;
+  gap: 2px;
+}
+.task-detail header .detail-tools button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 6px;
+  border-radius: 6px;
+  font-size: 14px;
+}
+.detail-tools button:hover {
+  background: var(--hover);
+}
+.detail-tools [aria-pressed="true"] {
+  color: var(--today);
+  background: var(--band);
+}
+.task-detail header .complete-task {
+  color: #426b4e;
+  background: transparent;
+  margin-right: 0;
+}
+:root[data-theme="dark"] .task-detail header .complete-task {
+  color: #abd4b1;
+}
+.task-detail .detail-body {
+  padding: 12px;
+}
+.task-detail .form-section {
+  padding: 10px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+}
+.task-detail .detail-title {
+  min-height: 48px;
+  height: 52px;
+  margin-bottom: 10px;
+  border-radius: 6px;
+}
+.category-section select {
+  width: 100%;
+}
+.memo .toolbar {
+  align-items: center;
+  background: #f2f0e8;
+  color: #302d25;
+  color-scheme: light;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 6px 6px 0 0;
+}
+.memo .toolbar button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 25px;
+  padding: 4px;
+  border: 0;
+  background: transparent;
+  border-radius: 4px;
+}
+.memo .toolbar button:hover,
+.memo .toolbar button[aria-pressed="true"] {
+  background: #deddd3;
+}
+.memo .toolbar svg {
+  width: 16px;
+  height: 16px;
+}
+.text-colors {
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  padding: 0 3px;
+  gap: 0;
+}
+.text-colors button {
+  width: 19px !important;
+}
+.memo-editor {
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+}
+.memo-editor > div {
+  display: flex;
+  flex: 1;
+  min-height: 100%;
+}
+.memo-editor .ProseMirror {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+}
+.ProseMirror p {
+  margin-top: 0;
+}
+.task-detail footer {
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+}
+.task-detail footer [role="status"] {
+  font-size: 11px;
+  flex: 0 1 auto;
+}
+.task-detail footer > .primary {
+  width: auto;
+  flex: 1;
+  padding: 7px;
+  font-size: 12px;
+  border-radius: 6px;
+}
+.skip-occurrence {
+  font-size: 12px;
+}
+.task-detail .formgrid {
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.25fr);
+  gap: 9px;
+}
+.task-detail .formgrid label,
+.task-detail .formgrid input {
+  min-width: 0;
+}
+.task-detail .formgrid input {
+  font-size: 12px;
+  padding: 6px 5px;
+}

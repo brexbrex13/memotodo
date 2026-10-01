@@ -17,7 +17,7 @@ test("task, rich memo, save-close, history and reopen", async ({ page }) => {
   const memo = page.locator(".ProseMirror");
   await memo.fill("太字の業務メモ");
   await memo.press("Control+a");
-  await page.getByTitle("太字 Ctrl+B").click();
+  await page.getByRole("button", { name: "太字", exact: true }).click();
   await expect(memo.locator("strong")).toHaveText("太字の業務メモ");
   await page.getByRole("button", { name: "文字色：赤", exact: true }).click();
   await expect(memo.locator("span")).toHaveAttribute("style", /color/);
@@ -211,9 +211,18 @@ test("memo links, pasted images and editor height survive save and reopen", asyn
     .locator(".card-content")
     .click();
   const memo = page.locator(".ProseMirror");
+  await expect(
+    page.getByRole("button", { name: "箇条書き", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "見出し", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "チェック", exact: true }),
+  ).toHaveCount(0);
   await memo.fill("資料を開く");
   await memo.press("Control+a");
-  page.once("dialog", (d) => d.accept("C:\\Work\\資料 #1.pdf"));
+  page.once("dialog", (d) => d.accept('"C:\\Work\\資料 #1.pdf"'));
   await page.getByRole("button", { name: "リンク", exact: true }).click();
   await expect(memo.locator("a")).toHaveAttribute(
     "href",
@@ -225,6 +234,11 @@ test("memo links, pasted images and editor height survive save and reopen", asyn
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem("memo-height")))
     .toBe("310");
+  const frameBox = await page.locator(".memo-editor").boundingBox();
+  const editingBox = await memo.boundingBox();
+  expect(editingBox!.height).toBeGreaterThanOrEqual(frameBox!.height - 3);
+  await memo.click({ position: { x: 15, y: editingBox!.height - 15 } });
+  await expect(memo).toBeFocused();
   await memo.press("ArrowRight");
   await memo.evaluate((el) => {
     const dt = new DataTransfer();

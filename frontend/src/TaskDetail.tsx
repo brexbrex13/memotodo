@@ -3,6 +3,7 @@ import { api } from "./api";
 import { editable, mergeDraft } from "./drafts";
 import { Category, Snapshot, Task } from "./types";
 import { Editor } from "./Editor";
+import { Icon } from "./Icons";
 export type DraftHandle = { flush: () => Promise<void> };
 export function TaskDetail({
   task,
@@ -139,18 +140,46 @@ export function TaskDetail({
     <aside className="detail task-detail" aria-label="タスクの詳細">
       <header>
         <h2>{task.series_id ? "定期タスク" : "タスクの詳細"}</h2>
-        {draft.status === "pending" && !draft.deleted_at && (
+        <div className="detail-tools">
           <button
-            className="primary complete-task"
+            aria-label="重要"
+            aria-pressed={draft.important}
+            data-tip="重要を切り替える"
             disabled={busy}
-            onClick={() => void state("done")}
+            onClick={() => change({ important: !draft.important })}
           >
-            完了
+            <Icon name="star" filled={draft.important} />
           </button>
-        )}
-        <button onClick={() => void leave()} aria-label="詳細を閉じる">
-          ×
-        </button>
+          <button
+            aria-label={draft.deleted_at ? "ごみ箱から戻す" : "ごみ箱へ"}
+            data-tip={draft.deleted_at ? "ごみ箱から戻す" : "ごみ箱へ"}
+            className="danger"
+            disabled={busy}
+            onClick={() => void state(draft.deleted_at ? "restore" : "trash")}
+          >
+            <Icon name={draft.deleted_at ? "undo" : "trash"} />
+          </button>
+          {!draft.deleted_at && (
+            <button
+              aria-label={draft.status === "pending" ? "完了" : "再開する"}
+              data-tip={draft.status === "pending" ? "完了" : "再開する"}
+              className="complete-task"
+              disabled={busy}
+              onClick={() =>
+                void state(draft.status === "pending" ? "done" : "pending")
+              }
+            >
+              <Icon name={draft.status === "pending" ? "check" : "undo"} />
+            </button>
+          )}
+          <button
+            aria-label="詳細を閉じる"
+            data-tip="保存して閉じる"
+            onClick={() => void leave()}
+          >
+            <Icon name="close" />
+          </button>
+        </div>
       </header>
       <div className="detail-body">
         <fieldset className="form-section">
@@ -161,30 +190,15 @@ export function TaskDetail({
             value={draft.title}
             onChange={(e) => change({ title: e.target.value })}
           />
-          <div className="formgrid">
-            <label>
-              カテゴリ
-              <select
-                value={draft.category_id}
-                onChange={(e) => change({ category_id: +e.target.value })}
-              >
-                <option value={0}>未分類</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={draft.important}
-                onChange={(e) => change({ important: e.target.checked })}
-              />
-              重要
-            </label>
-          </div>
+          <Editor
+            value={draft.memo}
+            onChange={(memo) => change({ memo })}
+            onError={onError}
+            onBusy={(v) => {
+              uploading.current = v;
+              setBusy(v);
+            }}
+          />
         </fieldset>
         <fieldset className="form-section">
           <legend>期限・通知</legend>
@@ -211,53 +225,40 @@ export function TaskDetail({
             </label>
           </div>
         </fieldset>
-        <div className="memo-label">メモ</div>
-        <Editor
-          value={draft.memo}
-          onChange={(memo) => change({ memo })}
-          onError={onError}
-          onBusy={(v) => {
-            uploading.current = v;
-            setBusy(v);
-          }}
-        />
-        <p
+        <fieldset className="form-section category-section">
+          <legend>カテゴリ</legend>
+          <select
+            aria-label="カテゴリ"
+            value={draft.category_id}
+            onChange={(e) => change({ category_id: +e.target.value })}
+          >
+            <option value={0}>未分類</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </fieldset>
+        {task.series_id > 0 &&
+          draft.status === "pending" &&
+          !draft.deleted_at && (
+            <button
+              className="skip-occurrence"
+              disabled={busy}
+              onClick={() => void state("skipped")}
+            >
+              今回は見送る
+            </button>
+          )}
+      </div>
+      <footer>
+        <span
           role="status"
           className={status.startsWith("保存失敗") ? "danger" : "muted"}
         >
           {status}
-        </p>
-
-        <div className="detail-actions">
-          {draft.deleted_at ? (
-            <button disabled={busy} onClick={() => void state("restore")}>
-              ごみ箱から戻す
-            </button>
-          ) : draft.status === "pending" ? (
-            <>
-              {task.series_id > 0 && (
-                <button disabled={busy} onClick={() => void state("skipped")}>
-                  今回は見送る
-                </button>
-              )}
-              <button
-                className="danger"
-                disabled={busy}
-                onClick={() => void state("trash")}
-              >
-                ごみ箱へ
-              </button>
-            </>
-          ) : (
-            <>
-              <button disabled={busy} onClick={() => void state("pending")}>
-                再開する
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-      <footer>
+        </span>
         <button
           className="primary"
           disabled={busy}

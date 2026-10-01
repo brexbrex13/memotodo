@@ -8,6 +8,7 @@ import Link from "@tiptap/extension-link";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import DOMPurify from "dompurify";
+import { Icon } from "./Icons";
 import { memoLink } from "./links";
 import { api } from "./api";
 const sanitizeMemo = (html: string) =>
@@ -34,7 +35,7 @@ export function Editor({
   const [height] = useState(() =>
     Math.max(
       140,
-      Math.min(900, Number(localStorage.getItem("memo-height")) || 240),
+      Math.min(900, Number(localStorage.getItem("memo-height")) || 180),
     ),
   );
 
@@ -81,9 +82,28 @@ export function Editor({
       TaskList,
       TaskItem.configure({ nested: true }),
     ],
+    // Keep existing list/heading nodes readable, without creation commands.
+    enableInputRules: false,
+    enablePasteRules: false,
     content: sanitizeMemo(value),
     onUpdate: ({ editor }) => change.current(editor.getHTML()),
     editorProps: {
+      attributes: {
+        role: "textbox",
+        "aria-label": "メモ",
+        "aria-multiline": "true",
+      },
+      handleKeyDown: (_view, e) => {
+        if (
+          (e.ctrlKey || e.metaKey) &&
+          e.shiftKey &&
+          /^(Digit[1-9])$/.test(e.code)
+        ) {
+          e.preventDefault();
+          return true;
+        }
+        return false;
+      },
       handlePaste: (_view, e) => {
         const item = Array.from(e.clipboardData?.items ?? []).find((i) =>
           i.type.startsWith("image/"),
@@ -148,7 +168,8 @@ export function Editor({
       <div className="toolbar">
         <button
           type="button"
-          title="太字 Ctrl+B"
+          aria-label="太字"
+          data-tip="太字 Ctrl+B"
           aria-pressed={editor.isActive("bold")}
           onClick={() => editor.chain().focus().toggleBold().run()}
         >
@@ -156,7 +177,9 @@ export function Editor({
         </button>
         <button
           type="button"
-          title="斜体 Ctrl+I"
+          aria-label="斜体"
+          data-tip="斜体 Ctrl+I"
+          aria-pressed={editor.isActive("italic")}
           onClick={() => editor.chain().focus().toggleItalic().run()}
         >
           <i>I</i>
@@ -183,26 +206,8 @@ export function Editor({
         </div>
         <button
           type="button"
-          onClick={() =>
-            editor.chain().focus().toggleHeading({ level: 2 }).run()
-          }
-        >
-          見出し
-        </button>
-        <button
-          type="button"
-          onClick={() => editor.chain().focus().toggleBulletList().run()}
-        >
-          箇条書き
-        </button>
-        <button
-          type="button"
-          onClick={() => editor.chain().focus().toggleTaskList().run()}
-        >
-          チェック
-        </button>
-        <button
-          type="button"
+          aria-label="リンク"
+          data-tip="リンクを追加・変更"
           onClick={() => {
             const href = prompt(
               "リンク先（HTTP/HTTPS、ローカル・UNCパス）",
@@ -228,28 +233,31 @@ export function Editor({
               .run();
           }}
         >
-          リンク
+          <Icon name="link" />
         </button>
         <button
           type="button"
+          aria-label="画像添付"
           data-tip="画像を本文に挿入します。Ctrl+V・ドロップでも添付できます"
           onClick={() => file.current?.click()}
         >
-          画像添付
+          <Icon name="image" />
         </button>
         <button
           type="button"
-          title="元に戻す Ctrl+Z"
+          aria-label="元に戻す"
+          data-tip="元に戻す Ctrl+Z"
           onClick={() => editor.chain().focus().undo().run()}
         >
-          ↶
+          <Icon name="undo" />
         </button>
         <button
           type="button"
-          title="やり直す"
+          aria-label="やり直す"
+          data-tip="やり直す Ctrl+Shift+Z"
           onClick={() => editor.chain().focus().redo().run()}
         >
-          ↷
+          <Icon name="redo" />
         </button>
         <input
           ref={file}

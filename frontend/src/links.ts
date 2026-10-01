@@ -1,6 +1,10 @@
 // File links store references, not attachment copies. Preserve spaces and UNC.
 export function memoLink(value: string): string {
-  const v = value.trim();
+  const trimmed = value.trim();
+  const v =
+    trimmed.startsWith('"') && trimmed.endsWith('"')
+      ? trimmed.slice(1, -1).trim()
+      : trimmed;
   if (/^https?:\/\//i.test(v) || /^file:\/\//i.test(v)) return v;
   if (/^[a-z]:[\\/]/i.test(v))
     return (

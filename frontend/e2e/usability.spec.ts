@@ -185,3 +185,111 @@ test("new recurring default is editable; tray input registers independently", as
     .toBe(true);
   await mini.close();
 });
+
+test("detail groups content with memo and top icon actions save importance", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const task = await service(page, "SaveTask", {
+    id: 0,
+    version: 0,
+    title: "詳細のアイコン操作",
+    memo: "",
+    status: "pending",
+    deadline: "",
+    reminder_at: "",
+    category_id: 0,
+    important: false,
+  });
+  await page.reload();
+  await page
+    .locator("article")
+    .filter({ hasText: task.title })
+    .locator(".card-content")
+    .click();
+  const detail = page.getByLabel("タスクの詳細", { exact: true });
+  await expect(detail.locator("legend")).toHaveText([
+    "内容",
+    "期限・通知",
+    "カテゴリ",
+  ]);
+  await expect(
+    detail
+      .locator("fieldset")
+      .first()
+      .getByRole("textbox", { name: "メモ", exact: true }),
+  ).toBeVisible();
+  const important = detail
+    .locator("header")
+    .getByRole("button", { name: "重要", exact: true });
+  await important.click();
+  await expect(important).toHaveAttribute("aria-pressed", "true");
+  await expect
+    .poll(
+      async () =>
+        (await service(page, "GetSnapshot")).tasks.find(
+          (t: any) => t.id === task.id,
+        ).important,
+    )
+    .toBe(true);
+  await detail
+    .locator("header")
+    .getByRole("button", { name: "完了", exact: true })
+    .click();
+  await expect(detail).toHaveCount(0);
+  expect(
+    (await service(page, "GetSnapshot")).tasks.find(
+      (t: any) => t.id === task.id,
+    ).status,
+  ).toBe("done");
+});
+
+test("deadline groups share a row when they fit and wrap as groups on compact windows", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 980, height: 740 });
+  await page.goto("/");
+  const today = new Date();
+  const date = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  for (const [title, deadline] of [
+    ["本日の書類確認", date(today)],
+    ["請求書の確認", date(tomorrow)],
+  ]) {
+    await service(page, "SaveTask", {
+      id: 0,
+      version: 0,
+      title,
+      memo: "",
+      status: "pending",
+      deadline,
+      reminder_at: "",
+      category_id: 0,
+      important: false,
+    });
+  }
+  await page.reload();
+  const band = page.getByLabel("期限の確認");
+  await expect(band.locator(".band-group")).toHaveCount(3);
+  const wide = await band
+    .locator(".band-group")
+    .evaluateAll((els) => els.map((el) => el.getBoundingClientRect().top));
+  expect(Math.max(...wide) - Math.min(...wide)).toBeLessThan(2);
+  await page.screenshot({ path: "../docs/screenshots/polished-board.png" });
+  await band
+    .getByRole("button", { name: "本日の書類確認", exact: true })
+    .click();
+  await expect(page.getByLabel("タスクの詳細", { exact: true })).toBeVisible();
+  await page.screenshot({ path: "../docs/screenshots/polished-detail.png" });
+  await page.getByLabel("詳細を閉じる").click();
+  await page.setViewportSize({ width: 360, height: 700 });
+  const compact = await band
+    .locator(".band-group")
+    .evaluateAll((els) => els.map((el) => el.getBoundingClientRect().top));
+  expect(Math.max(...compact) - Math.min(...compact)).toBeGreaterThan(10);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(360);
+});
