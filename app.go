@@ -32,6 +32,8 @@ type App struct {
 	noticeVisible bool
 	noticeReady   atomic.Bool
 	startOnce     sync.Once
+	stopOnce      sync.Once
+	quitting      atomic.Bool
 }
 
 func (a *App) start() { a.startOnce.Do(func() { a.wg.Add(1); go a.run() }) }
@@ -82,6 +84,9 @@ func (a *App) tick(startup bool) {
 }
 func (a *App) changed() { a.tick(false); a.desktop.Event.Emit("board:changed") }
 func (a *App) refreshNotice() {
+	if a.quitting.Load() {
+		return
+	}
 	if !a.noticeReady.Load() {
 		return
 	}
@@ -233,6 +238,9 @@ func (a *App) TestNotification() error {
 func (a *App) OpenTask(id int64) { a.openMain(id) }
 func (a *App) FinishClose(mode string) {
 	if mode == "quit" {
+		a.quitting.Store(true)
+		a.stopOnce.Do(func() { close(a.stop) })
+		a.wg.Wait()
 		a.desktop.Quit()
 	} else {
 		a.main.Hide()

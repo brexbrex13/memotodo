@@ -737,3 +737,8 @@ fieldset legend {
     margin-top: 12px;
   }
 }
+
+.app > .error {
+  position: relative;
+  z-index: 60;
+}

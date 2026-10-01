@@ -40,7 +40,8 @@ func main() {
 		panic(e)
 	}
 	handler := application.AssetFileServerFS(frontend)
-	service.desktop = application.New(application.Options{Name: "MemoTodo", Description: "付箋・Todo・メモ・リマインダー", Services: []application.Service{application.NewService(service)},
+	icon, _ := assets.ReadFile("build/appicon.png")
+	service.desktop = application.New(application.Options{Name: "MemoTodo", Icon: icon, Description: "付箋・Todo・メモ・リマインダー", Services: []application.Service{application.NewService(service)},
 		Assets: application.AssetOptions{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if strings.HasPrefix(r.URL.Path, "/images/") {
 				name := strings.TrimPrefix(r.URL.Path, "/images/")
@@ -56,15 +57,21 @@ func main() {
 		})},
 		SingleInstance: &application.SingleInstanceOptions{UniqueID: "memotodo-sticky-board-v3", OnSecondInstanceLaunch: func(application.SecondInstanceData) { service.openMain(0) }},
 	})
-	icon, _ := assets.ReadFile("build/appicon.png")
 	ico, _ := assets.ReadFile("internal/tray/icon.ico")
 	service.main = service.desktop.Window.NewWithOptions(application.WebviewWindowOptions{Name: "board", Title: "MemoTodo", Width: 1180, Height: 800, MinWidth: 760, MinHeight: 500, URL: "/", BackgroundColour: application.NewRGB(247, 246, 241)})
 	service.notice = service.desktop.Window.NewWithOptions(application.WebviewWindowOptions{Name: "notifications", Title: "MemoTodo 通知", Width: 440, Height: 530, Hidden: true, Frameless: true, AlwaysOnTop: true, DisableResize: true, URL: "/?window=notifications", Windows: application.WindowsWindow{HiddenOnTaskbar: true, ExStyle: noticeStyle()}, BackgroundColour: application.NewRGB(247, 246, 241)})
 	service.main.RegisterHook(events.Common.WindowClosing, func(ev *application.WindowEvent) {
+		if service.quitting.Load() {
+			return
+		}
 		ev.Cancel()
 		service.desktop.Event.Emit("board:close-request", "hide")
 	})
-	service.notice.RegisterHook(events.Common.WindowClosing, func(ev *application.WindowEvent) { ev.Cancel() })
+	service.notice.RegisterHook(events.Common.WindowClosing, func(ev *application.WindowEvent) {
+		if !service.quitting.Load() {
+			ev.Cancel()
+		}
+	})
 	tray := service.desktop.SystemTray.New()
 	tray.SetIcon(ico)
 	tray.SetTooltip("MemoTodo — クリックしてボードを開く")
@@ -81,7 +88,7 @@ func main() {
 	os.WriteFile(filepath.Join(dir, "notify_icon.png"), icon, 0644)
 	notify.Init(filepath.Join(dir, "notify_icon.png"), func() { service.openMain(0) })
 	service.desktop.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) { service.start(); startNativeVerification(service) })
-	service.desktop.OnShutdown(func() { close(service.stop); service.wg.Wait() })
+	service.desktop.OnShutdown(func() { service.quitting.Store(true); service.stopOnce.Do(func() { close(service.stop) }) })
 	if e = service.desktop.Run(); e != nil {
 		panic(e)
 	}

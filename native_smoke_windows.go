@@ -55,7 +55,7 @@ func startNativeVerification(a *App) {
 			}
 			b, _ := json.MarshalIndent(result, "", "  ")
 			os.WriteFile("native-smoke.json", b, 0644)
-			a.desktop.Quit()
+			a.FinishClose("quit")
 		}
 		time.Sleep(2 * time.Second)
 		deadline := time.Now().Add(20 * time.Second)

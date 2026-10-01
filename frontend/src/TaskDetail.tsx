@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "./api";
-import { mergeDraft } from "./drafts";
+import { editable, mergeDraft } from "./drafts";
 import { Category, Snapshot, Task } from "./types";
 import { Editor } from "./Editor";
 export type DraftHandle = { flush: () => Promise<void> };
@@ -64,7 +64,12 @@ export function TaskDetail({
             if (!latest) throw e;
             result = await api<Task>("SaveTask", mergeDraft(base, v, latest));
           }
-          current.current = mergeDraft(v, current.current, result);
+          const during = current.current;
+          current.current = { ...result };
+          for (const key of editable) {
+            if (during[key] !== v[key])
+              Object.assign(current.current, { [key]: during[key] });
+          }
           saved.current = result;
           setDraft(current.current);
           if (
@@ -240,11 +245,11 @@ export function TaskDetail({
         </p>
         <button onClick={() => void flush().catch(onError)}>今すぐ保存</button>
         <div className="detail-actions">
-          {task.deleted_at ? (
+          {draft.deleted_at ? (
             <button disabled={busy} onClick={() => void state("restore")}>
               ごみ箱から戻す
             </button>
-          ) : task.status === "pending" ? (
+          ) : draft.status === "pending" ? (
             <>
               <button
                 className="primary"
