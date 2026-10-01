@@ -32,7 +32,12 @@ var getAncestor = user32.NewProc("GetAncestor")
 var activationGuard = windows.NewCallback(func(code int, wparam, lparam uintptr) uintptr {
 	if code == 5 {
 		root, _, _ := getAncestor.Call(wparam, 2)
-		if noticeHandles[wparam] || noticeHandles[root] {
+		// Dynamic windows can request focus while WebView2 is being created,
+		// before the renderer calls Ready and showNotice registers the HWND.
+		// This hook runs only on our UI thread; NOACTIVATE + TOOLWINDOW also
+		// identifies a notification throughout that initialisation interval.
+		style, _, _ := user32.NewProc("GetWindowLongPtrW").Call(root, ^uintptr(19))
+		if noticeHandles[wparam] || noticeHandles[root] || style&0x08000080 == 0x08000080 {
 			return 1
 		}
 	}

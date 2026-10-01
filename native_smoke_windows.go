@@ -197,10 +197,27 @@ func startNativeVerification(a *App) {
 			finish(fmt.Errorf("second notification has no independent window"))
 			return
 		}
-		secondVisible, _, _ := user32.NewProc("IsWindowVisible").Call(uintptr(extra.NativeWindow()))
-		active, _, _ = getForegroundWindow.Call()
-		if secondVisible == 0 || active != foreground {
-			finish(fmt.Errorf("second notification was hidden or stole focus"))
+		var secondVisible uintptr
+		deadline = time.Now().Add(15 * time.Second)
+		for time.Now().Before(deadline) {
+			secondVisible, _, _ = user32.NewProc("IsWindowVisible").Call(uintptr(extra.NativeWindow()))
+			active, _, _ = getForegroundWindow.Call()
+			if active != foreground {
+				finish(fmt.Errorf("second notification stole focus (before=%x after=%x visible=%d)", foreground, active, secondVisible))
+				return
+			}
+			if secondVisible != 0 {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		if secondVisible == 0 {
+			a.mu.Lock()
+			loaded := a.noticeLoaded
+			shown := a.noticeShown
+			message := fmt.Errorf("second notification remained hidden (loaded=%v shown=%v hwnd=%x)", loaded, shown, uintptr(extra.NativeWindow()))
+			a.mu.Unlock()
+			finish(message)
 			return
 		}
 		var firstRect, secondRect struct{ Left, Top, Right, Bottom int32 }
