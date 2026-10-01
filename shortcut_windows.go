@@ -4,6 +4,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/wailsapp/wails/v3/pkg/application"
 	"golang.org/x/sys/windows"
 	"memotodo/internal/board"
 	"runtime"
@@ -142,14 +143,21 @@ func (a *App) rememberQuickFocus() {
 		a.quickPrevious.Store(foreground)
 	}
 }
-func (a *App) restoreQuickFocus() {
-	previous := a.quickPrevious.Swap(0)
-	if previous == 0 {
-		return
-	}
-	// Do not pull the user away if another app already became foreground.
-	foreground, _, _ := getForegroundWindow.Call()
-	if foreground == 0 || foreground == uintptr(a.mini.NativeWindow()) {
+func (a *App) hideQuickNative() {
+	application.InvokeSync(func() {
+		previous := a.quickPrevious.Swap(0)
+		foreground, _, _ := getForegroundWindow.Call()
+		wasQuick := foreground == uintptr(a.mini.NativeWindow())
+		// Hiding an active window can select another window automatically. Return
+		// focus afterwards, on the UI thread; never override a user's app switch.
+		a.mini.Hide()
+		if !wasQuick || previous == 0 {
+			return
+		}
+		valid, _, _ := user32.NewProc("IsWindow").Call(previous)
+		if valid == 0 {
+			return
+		}
 		user32.NewProc("SetForegroundWindow").Call(previous)
-	}
+	})
 }

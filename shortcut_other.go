@@ -8,4 +8,4 @@ func newShortcutManager(func()) *shortcutManager { return &shortcutManager{} }
 func (*shortcutManager) Change(string) error     { return nil }
 func (*shortcutManager) Close()                  {}
 func (*App) rememberQuickFocus()                 {}
-func (*App) restoreQuickFocus()                  {}
+func (a *App) hideQuickNative()                  { a.mini.Hide() }

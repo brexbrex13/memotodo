@@ -430,8 +430,7 @@ func (a *App) TestNotification() error {
 func (a *App) OpenTask(id int64) { a.openMain(id) }
 func (a *App) HideQuickAdd() {
 	if a.mini != nil {
-		a.restoreQuickFocus()
-		a.mini.Hide()
+		a.hideQuickNative()
 	}
 }
 func (a *App) ToggleImportant(id int64) error {

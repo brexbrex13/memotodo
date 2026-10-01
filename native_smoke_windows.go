@@ -344,11 +344,12 @@ func startNativeVerification(a *App) {
 			finish(fmt.Errorf("global shortcut did not focus quick input"))
 			return
 		}
+		previous := a.quickPrevious.Load()
 		a.HideQuickAdd()
 		time.Sleep(200 * time.Millisecond)
 		active, _, _ = getForegroundWindow.Call()
 		if active != foreground {
-			finish(fmt.Errorf("closing quick input did not return to original app"))
+			finish(fmt.Errorf("closing quick input did not return to original app: expected=%x saved=%x active=%x", foreground, previous, active))
 			return
 		}
 		settings.Settings.QuickShortcut = savedShortcut
