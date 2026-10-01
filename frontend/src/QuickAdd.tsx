@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, on } from "./api";
 import { emptyTask, Snapshot } from "./types";
+import { useSuggestions } from "./Suggestions";
 import { useTheme } from "./theme";
 export function QuickAdd() {
   const [text, setText] = useState(
@@ -9,6 +10,17 @@ export function QuickAdd() {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const suggest = useSuggestions(
+    snapshot?.tasks ?? [],
+    text,
+    snapshot?.settings.suggest_min_count ?? 3,
+    setText,
+  );
+  useEffect(() => {
+    void api("SetQuickAddExpanded", suggest.open || !!error).catch((e) =>
+      setError(String(e)),
+    );
+  }, [suggest.open, !!error]);
   const input = useRef<HTMLInputElement>(null);
   useTheme(snapshot?.settings.theme);
   useEffect(() => {
@@ -35,6 +47,7 @@ export function QuickAdd() {
     try {
       await api("SaveTask", { ...emptyTask(), title: text });
       setText("");
+      suggest.reset();
       await api("HideQuickAdd");
     } catch (e) {
       setError(String(e));
@@ -59,8 +72,14 @@ export function QuickAdd() {
         placeholder="入力してEnterで追加"
         value={text}
         disabled={busy}
-        onChange={(e) => setText(e.target.value)}
+        onFocus={suggest.reset}
+        onBlur={suggest.blur}
+        onChange={(e) => {
+          setText(e.target.value);
+          suggest.reset();
+        }}
         onKeyDown={(e) => {
+          if (suggest.keyDown(e)) return;
           if (
             e.key === "Enter" &&
             !e.nativeEvent.isComposing &&
@@ -72,6 +91,7 @@ export function QuickAdd() {
           if (e.key === "Escape") void api("HideQuickAdd");
         }}
       />
+      {suggest.list}
       {error && <p role="alert">{error}</p>}
     </main>
   );

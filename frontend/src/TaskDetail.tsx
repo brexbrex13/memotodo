@@ -3,6 +3,7 @@ import { api } from "./api";
 import { editable, mergeDraft } from "./drafts";
 import { Category, Snapshot, Task } from "./types";
 import { Editor } from "./Editor";
+import { ReminderFields } from "./ReminderFields";
 import { Icon } from "./Icons";
 export type DraftHandle = { flush: () => Promise<void> };
 export function TaskDetail({
@@ -212,26 +213,7 @@ export function TaskDetail({
         <fieldset className="form-section">
           <legend>期限・通知</legend>
           <div className="formgrid">
-            <label>
-              期限日
-              <input
-                type="date"
-                value={draft.deadline.slice(0, 10)}
-                onChange={(e) =>
-                  change({
-                    deadline: e.target.value,
-                  })
-                }
-              />
-            </label>
-            <label data-tip="期限とは独立した通知時刻です。期限到達だけでは通知しません。">
-              通知時刻
-              <input
-                type="datetime-local"
-                value={draft.reminder_at.slice(0, 16)}
-                onChange={(e) => change({ reminder_at: e.target.value })}
-              />
-            </label>
+            <ReminderFields value={draft} onChange={change} />
           </div>
         </fieldset>
         <fieldset className="form-section category-section">

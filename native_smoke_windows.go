@@ -275,6 +275,88 @@ func startNativeVerification(a *App) {
 			finish(fmt.Errorf("tray double click left a delayed quick input"))
 			return
 		}
+		// Exercise real RegisterHotKey delivery and atomic conflict handling.
+		settings, err := a.store.Snapshot()
+		if err != nil {
+			finish(err)
+			return
+		}
+		savedShortcut := settings.Settings.QuickShortcut
+		settings.Settings.QuickShortcut = "Ctrl+Alt+Shift+F11"
+		if err = a.SaveSettings(settings.Settings); err != nil {
+			finish(err)
+			return
+		}
+		competitor := newShortcutManager(func() {})
+		if err = competitor.Change(settings.Settings.QuickShortcut); err == nil {
+			competitor.Close()
+			finish(fmt.Errorf("duplicate global shortcut accepted"))
+			return
+		}
+		settings.Settings.QuickShortcut = ""
+		if err = a.SaveSettings(settings.Settings); err != nil {
+			competitor.Close()
+			finish(err)
+			return
+		}
+		if err = competitor.Change("Ctrl+Alt+Shift+F11"); err != nil {
+			competitor.Close()
+			finish(err)
+			return
+		}
+		settings.Settings.QuickShortcut = "Ctrl+Alt+Shift+F11"
+		if err = a.SaveSettings(settings.Settings); err == nil {
+			competitor.Close()
+			finish(fmt.Errorf("conflicting shortcut was saved"))
+			return
+		}
+		latest, _ := a.store.Snapshot()
+		if latest.Settings.QuickShortcut != "" {
+			competitor.Close()
+			finish(fmt.Errorf("failed shortcut change modified persisted settings"))
+			return
+		}
+		competitor.Close()
+		if err = a.SaveSettings(settings.Settings); err != nil {
+			finish(err)
+			return
+		}
+		a.main.Hide()
+		a.mini.Hide()
+		user32.NewProc("SetForegroundWindow").Call(foreground)
+		keyboard := user32.NewProc("keybd_event")
+		for _, key := range []uintptr{0x11, 0x12, 0x10, 0x7A} {
+			keyboard.Call(key, 0, 0, 0)
+		}
+		for _, key := range []uintptr{0x7A, 0x10, 0x12, 0x11} {
+			keyboard.Call(key, 0, 2, 0)
+		}
+		deadline = time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			miniVisible, _, _ = user32.NewProc("IsWindowVisible").Call(uintptr(a.mini.NativeWindow()))
+			active, _, _ = getForegroundWindow.Call()
+			if miniVisible != 0 && active == uintptr(a.mini.NativeWindow()) {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		if miniVisible == 0 || active != uintptr(a.mini.NativeWindow()) {
+			finish(fmt.Errorf("global shortcut did not focus quick input"))
+			return
+		}
+		a.HideQuickAdd()
+		time.Sleep(200 * time.Millisecond)
+		active, _, _ = getForegroundWindow.Call()
+		if active != foreground {
+			finish(fmt.Errorf("closing quick input did not return to original app"))
+			return
+		}
+		settings.Settings.QuickShortcut = savedShortcut
+		if err = a.SaveSettings(settings.Settings); err != nil {
+			finish(err)
+			return
+		}
+		result["global-shortcut-change-disable-conflict-focus"] = true
 		result["tray-single-double-click"] = true
 		finish(nil)
 	}()

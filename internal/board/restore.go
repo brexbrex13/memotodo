@@ -3,6 +3,7 @@ package board
 import (
 	"archive/zip"
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,48 +19,82 @@ import (
 // images, uses new filenames for conflicting attachments, and commits all rows
 // together. A failed restore may leave orphan images, never a half restored DB.
 func (s *Store) Restore(data []byte) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if len(data) > 50<<20 {
-		return errors.New("バックアップは50MB以内にしてください")
-	}
 	z, e := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if e != nil {
 		return e
 	}
+	return s.restoreZIP(z)
+}
+
+// Desktop restoration opens the ZIP directly; attachments are streamed to disk,
+// never copied through base64 or collected into one in-memory image map.
+func (s *Store) RestoreFile(path string) error {
+	z, e := zip.OpenReader(path)
+	if e != nil {
+		return e
+	}
+	defer z.Close()
+	return s.restoreZIP(&z.Reader)
+}
+func (s *Store) restoreZIP(z *zip.Reader) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	stage, e := os.MkdirTemp(s.Dir, ".restore-")
+	if e != nil {
+		return e
+	}
+	defer os.RemoveAll(stage)
 	var dump struct {
 		Format  string                       `json:"format"`
 		Version int                          `json:"version"`
 		Tables  map[string][]json.RawMessage `json:"tables"`
 	}
-	files := map[string][]byte{}
-	var total uint64
+	files := map[string]bool{}
+	seenNames := map[string]bool{}
 	for _, f := range z.File {
-		total += f.UncompressedSize64
-		if total > 200<<20 {
-			return errors.New("展開後の容量が200MBを超えています")
-		}
-		if f.Name != "board.json" && (!strings.HasPrefix(f.Name, "images/") || filepath.Base(f.Name) != strings.TrimPrefix(f.Name, "images/") || strings.ContainsAny(f.Name, "\\:")) {
+		if f.Name != "board.json" && (!strings.HasPrefix(f.Name, "images/") || strings.TrimPrefix(f.Name, "images/") == "" || strings.TrimPrefix(f.Name, "images/") == "." || strings.TrimPrefix(f.Name, "images/") == ".." || filepath.Base(f.Name) != strings.TrimPrefix(f.Name, "images/") || strings.ContainsAny(f.Name, "\\:") || f.Mode()&os.ModeSymlink != 0) {
 			return errors.New("バックアップ内のパスが不正です")
 		}
-		if _, exists := files[f.Name]; exists {
+		if seenNames[strings.ToLower(f.Name)] {
 			return errors.New("バックアップ内に重複ファイルがあります")
 		}
+		files[f.Name] = true
+		seenNames[strings.ToLower(f.Name)] = true
 		r, e := f.Open()
 		if e != nil {
 			return e
 		}
-		b, e := io.ReadAll(io.LimitReader(r, 200<<20+1))
+		if f.Name == "board.json" {
+			decoder := json.NewDecoder(r)
+			e = decoder.Decode(&dump)
+			if e == nil {
+				var extra any
+				if tail := decoder.Decode(&extra); tail != io.EOF {
+					if tail == nil {
+						e = errors.New("バックアップの内容が不正です")
+					} else {
+						e = tail
+					}
+				}
+			} // Verify the ZIP checksum as well.
+		} else {
+			out, err := os.Create(filepath.Join(stage, strings.TrimPrefix(f.Name, "images/")))
+			if err != nil {
+				r.Close()
+				return err
+			}
+			_, e = io.Copy(out, r)
+			closeErr := out.Close()
+			if e == nil {
+				e = closeErr
+			}
+		}
 		r.Close()
 		if e != nil {
 			return e
 		}
-		files[f.Name] = b
 	}
-	if e = json.Unmarshal(files["board.json"], &dump); e != nil {
-		return e
-	}
-	if dump.Format != "memotodo-board-v3" || dump.Version != 1 {
+	if !files["board.json"] || dump.Format != "memotodo-board-v3" || dump.Version != 1 {
 		return errors.New("MemoTodo v3のバックアップを選んでください")
 	}
 	for _, table := range []string{"tasks", "categories", "series", "notifications", "metadata"} {
@@ -68,16 +103,28 @@ func (s *Store) Restore(data []byte) error {
 		}
 	}
 	remap := map[string]string{}
-	for path, b := range files {
+	for path := range files {
 		if path == "board.json" {
 			continue
 		}
-		name := strings.TrimPrefix(path, "images/")
-		if old, e := os.ReadFile(filepath.Join(s.Dir, path)); e == nil && !bytes.Equal(old, b) {
+		original := strings.TrimPrefix(path, "images/")
+		name := original
+		target := filepath.Join(s.Dir, "images", name)
+		if _, err := os.Stat(target); err == nil {
+			same, err := sameFile(target, filepath.Join(stage, original))
+			if err != nil {
+				return err
+			}
+			if same {
+				continue
+			}
 			name = uuid.NewString() + filepath.Ext(name)
-			remap[strings.TrimPrefix(path, "images/")] = name
+			remap[original] = name
+			target = filepath.Join(s.Dir, "images", name)
+		} else if !os.IsNotExist(err) {
+			return err
 		}
-		if e = os.WriteFile(filepath.Join(s.Dir, "images", name), b, 0644); e != nil {
+		if e = os.Rename(filepath.Join(stage, original), target); e != nil {
 			return e
 		}
 	}
@@ -198,5 +245,30 @@ func (s *Store) Restore(data []byte) error {
 	if e = s.freezeInheritedLead(tx); e != nil {
 		return e
 	}
-	return tx.Commit()
+	if e = tx.Commit(); e != nil {
+		return e
+	}
+	s.undo = nil
+	return nil
+}
+
+func sameFile(a, b string) (bool, error) {
+	hash := func(path string) ([]byte, error) {
+		f, e := os.Open(path)
+		if e != nil {
+			return nil, e
+		}
+		defer f.Close()
+		h := sha256.New()
+		if _, e = io.Copy(h, f); e != nil {
+			return nil, e
+		}
+		return h.Sum(nil), nil
+	}
+	x, e := hash(a)
+	if e != nil {
+		return false, e
+	}
+	y, e := hash(b)
+	return bytes.Equal(x, y), e
 }

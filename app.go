@@ -23,6 +23,10 @@ import (
 )
 
 type App struct {
+	shortcut       *shortcutManager
+	settingsMu     sync.Mutex
+	shortcutError  string
+	quickPrevious  atomic.Uintptr
 	store          *board.Store
 	desktop        *application.App
 	main, notice   *application.WebviewWindow
@@ -280,6 +284,15 @@ func (a *App) SaveTask(v board.Task) (board.Task, error) {
 	return t, e
 }
 func (a *App) SetState(id int64, state string) error {
+	if state == "done" {
+		c, e := a.store.Complete(id)
+		if e != nil {
+			return e
+		}
+		a.changed()
+		a.desktop.Event.Emit("board:completed", c)
+		return nil
+	}
 	e := a.store.SetState(id, state)
 	if e == nil {
 		a.changed()
@@ -325,11 +338,70 @@ func (a *App) StopSeries(id int64) error {
 	return e
 }
 func (a *App) SaveSettings(v board.Settings) error {
-	e := a.store.SaveSettings(v)
-	if e == nil {
-		a.changed()
+	a.settingsMu.Lock()
+	defer a.settingsMu.Unlock()
+	old, e := a.store.Snapshot()
+	if e != nil {
+		return e
 	}
-	return e
+	if e = a.store.ValidateSettings(v); e != nil {
+		return e
+	}
+	if a.shortcut != nil {
+		if e = a.shortcut.Change(v.QuickShortcut); e != nil {
+			return e
+		}
+	}
+	e = a.store.SaveSettings(v)
+	if e != nil {
+		if a.shortcut != nil {
+			a.shortcut.Change(old.Settings.QuickShortcut)
+		}
+		return e
+	}
+	a.shortcutError = ""
+	a.changed()
+	return nil
+}
+func (a *App) GetShortcutStatus() string {
+	a.settingsMu.Lock()
+	defer a.settingsMu.Unlock()
+	return a.shortcutError
+}
+func (a *App) ToggleToday(id int64) error {
+	if e := a.store.ToggleToday(id); e != nil {
+		return e
+	}
+	a.changed()
+	return nil
+}
+func (a *App) UndoCompletion(token string) error {
+	if e := a.store.UndoCompletion(token); e != nil {
+		return e
+	}
+	a.changed()
+	return nil
+}
+func (a *App) showQuickAdd() {
+	if a.quitting.Load() || a.tray == nil {
+		return
+	}
+	a.rememberQuickFocus()
+	a.tray.ShowWindow()
+	a.desktop.Event.Emit("board:mini-focus")
+}
+func (a *App) SetQuickAddExpanded(expanded bool) {
+	if a.mini == nil {
+		return
+	}
+	height := 105
+	if expanded {
+		height = 285
+	}
+	a.mini.SetSize(360, height)
+	if a.tray != nil {
+		a.tray.PositionWindow(a.mini, 8)
+	}
 }
 func (a *App) Acknowledge(id int64) error {
 	e := a.store.Acknowledge(id)
@@ -358,6 +430,7 @@ func (a *App) TestNotification() error {
 func (a *App) OpenTask(id int64) { a.openMain(id) }
 func (a *App) HideQuickAdd() {
 	if a.mini != nil {
+		a.restoreQuickFocus()
 		a.mini.Hide()
 	}
 }
@@ -469,23 +542,44 @@ func (a *App) OpenDataFolder() error {
 }
 func (a *App) Backup() (string, error) { return a.store.Backup() }
 
+// The legacy byte API remains available for tests and existing clients, but the
+// desktop UI uses a native picker and streams the selected ZIP from disk.
 func (a *App) RestoreBackup(encoded string) error {
-	if len(encoded) > 70<<20 {
-		return errors.New("バックアップは50MB以内にしてください")
-	}
 	data, e := base64.StdEncoding.DecodeString(encoded)
 	if e != nil {
 		return e
 	}
-	if _, e = a.store.Backup(); e != nil {
+	return a.restoreBackup(func() error { return a.store.Restore(data) })
+}
+func (a *App) RestoreBackupFile() (bool, error) {
+	path, e := a.desktop.Dialog.OpenFile().SetTitle("MemoTodoのバックアップを選択").AddFilter("バックアップZIP", "*.zip").PromptForSingleSelection()
+	if e != nil || path == "" {
+		return false, e
+	}
+	e = a.restoreBackup(func() error { return a.store.RestoreFile(path) })
+	return e == nil, e
+}
+func (a *App) restoreBackup(restore func() error) error {
+	a.settingsMu.Lock()
+	defer a.settingsMu.Unlock()
+	if _, e := a.store.Backup(); e != nil {
 		return fmt.Errorf("復元前の退避に失敗しました: %w", e)
 	}
-	if e = a.store.Restore(data); e != nil {
+	if e := restore(); e != nil {
 		return e
 	}
 	a.mu.Lock()
 	a.seen = map[int64]bool{}
 	a.mu.Unlock()
+	if v, e := a.store.Snapshot(); e == nil && a.shortcut != nil {
+		if e = a.shortcut.Change(v.Settings.QuickShortcut); e != nil {
+			a.shortcut.Change("")
+			a.shortcutError = e.Error()
+			a.desktop.Event.Emit("board:error", a.shortcutError)
+		} else {
+			a.shortcutError = ""
+		}
+	}
 	a.changed()
 	return nil
 }
@@ -500,8 +594,7 @@ func (a *App) traySingleClick() {
 		if a.quitting.Load() || a.trayGeneration.Load() != generation {
 			return
 		}
-		a.tray.ShowWindow()
-		a.desktop.Event.Emit("board:mini-focus")
+		a.showQuickAdd()
 	})
 }
 func (a *App) trayDoubleClick() {

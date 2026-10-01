@@ -16,10 +16,11 @@ import (
 // All mutations, scheduler ticks and snapshots share one lock. A notification and
 // its delivered marker are committed in one transaction; no UI event is the ledger.
 type Store struct {
-	mu  sync.Mutex
-	db  *sql.DB
-	Dir string
-	now func() time.Time
+	mu   sync.Mutex
+	db   *sql.DB
+	Dir  string
+	now  func() time.Time
+	undo map[string]completionUndo
 }
 
 func Open(dir string) (*Store, error) {
@@ -158,6 +159,11 @@ func validateTask(t Task) error {
 			}
 		}
 	}
+	if t.TodayDate != "" {
+		if _, e := time.Parse("2006-01-02", t.TodayDate); e != nil {
+			return errors.New("今日やるの日付が不正です")
+		}
+	}
 	return nil
 }
 func (s *Store) SaveTask(t Task) (Task, error) {
@@ -171,6 +177,9 @@ func (s *Store) SaveTask(t Task) (Task, error) {
 	t.Title = strings.TrimSpace(t.Title)
 	if t.Status == "" {
 		t.Status = "pending"
+	}
+	if e := resolveReminder(&t); e != nil {
+		return t, e
 	}
 	if e := validateTask(t); e != nil {
 		return t, e
@@ -210,6 +219,7 @@ func (s *Store) SaveTask(t Task) (Task, error) {
 		t.CreatedAt = old.CreatedAt
 		t.DeletedAt = old.DeletedAt
 		t.SortOrder = old.SortOrder
+		t.TodayDate = old.TodayDate
 		t.DoneAt = old.DoneAt
 		t.NotifiedAt = old.NotifiedAt
 		t.Version++
@@ -220,6 +230,8 @@ func (s *Store) SaveTask(t Task) (Task, error) {
 			if t.Status == "pending" {
 				t.DoneAt = ""
 				t.ReminderAt = ""
+				t.ReminderMode = ""
+				t.ReminderTime = ""
 				t.NotifiedAt = ""
 			} else {
 				t.DoneAt = ISO(s.now())
@@ -245,6 +257,8 @@ func (s *Store) SetState(id int64, state string) error {
 		if state == "pending" {
 			t.DoneAt = ""
 			t.ReminderAt = ""
+			t.ReminderMode = ""
+			t.ReminderTime = ""
 			t.NotifiedAt = ""
 		}
 	case "trash":
@@ -362,9 +376,18 @@ func (s *Store) DeleteCategory(id int64) error {
 	}
 	return tx.Commit()
 }
-func (s *Store) SaveSettings(v Settings) error {
+func (s *Store) ValidateSettings(v Settings) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return validateSettings(s.db, v)
+}
+func validateSettings(q queryer, v Settings) error {
+	if _, _, e := ParseShortcut(v.QuickShortcut); e != nil {
+		return e
+	}
+	if v.SuggestMinCount < 0 || v.SuggestMinCount > 100 {
+		return errors.New("候補の最低登録回数は0〜100で指定してください")
+	}
 	if v.Theme != "" && v.Theme != "light" && v.Theme != "dark" && v.Theme != "system" {
 		return errors.New("配色設定が不正です")
 	}
@@ -376,7 +399,7 @@ func (s *Store) SaveSettings(v Settings) error {
 			return errors.New("カスタム配色が不正です")
 		}
 	}
-	all, e := list[Series](s.db, "series")
+	all, e := list[Series](q, "series")
 	if e != nil {
 		return e
 	}
@@ -399,6 +422,14 @@ func (s *Store) SaveSettings(v Settings) error {
 		if _, e := ParseTime(v.PauseUntil, time.Local); e != nil {
 			return e
 		}
+	}
+	return nil
+}
+func (s *Store) SaveSettings(v Settings) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if e := validateSettings(s.db, v); e != nil {
+		return e
 	}
 	b, e := json.Marshal(v)
 	if e != nil {

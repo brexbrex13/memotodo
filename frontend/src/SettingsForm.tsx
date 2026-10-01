@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "./api";
+import { ShortcutField } from "./ShortcutField";
 import { Settings } from "./types";
 export function SettingsForm({
   initial,
@@ -15,7 +16,13 @@ export function SettingsForm({
   const [v, setV] = useState(initial),
     [times, setTimes] = useState(initial.notify_times.join(", ")),
     [busy, setBusy] = useState(false),
-    [backup, setBackup] = useState("");
+    [backup, setBackup] = useState(""),
+    [saveError, setSaveError] = useState("");
+  useEffect(() => {
+    void api<string>("GetShortcutStatus")
+      .then((e) => setSaveError(e || ""))
+      .catch(onError);
+  }, []);
   const patch = (p: Partial<Settings>) => setV((x) => ({ ...x, ...p }));
   return (
     <div className="overlay">
@@ -28,6 +35,21 @@ export function SettingsForm({
         </header>
         <div className="modal-body">
           <div className="formgrid">
+            <ShortcutField
+              value={v.quick_shortcut ?? "Ctrl+Alt+N"}
+              onChange={(quick_shortcut) => patch({ quick_shortcut })}
+            />
+            <label>
+              候補を表示する最低登録回数
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={v.suggest_min_count ?? 3}
+                data-tip="手動で登録したタスク名が候補になります。0で候補表示を無効にします。"
+                onChange={(e) => patch({ suggest_min_count: +e.target.value })}
+              />
+            </label>
             <label>
               新規定期タスクの追加日数（初期値）
               <input
@@ -164,55 +186,47 @@ export function SettingsForm({
             </button>
           </div>
           {backup && <p className="path">保存しました：{backup}</p>}
-          <label>
-            バックアップZIPから復元（50MBまで）
-            <input
-              type="file"
-              accept=".zip"
-              disabled={busy}
-              onChange={async (e) => {
-                const f = e.target.files?.[0];
-                e.target.value = "";
-                if (!f) return;
-                if (f.size > 50 * 1024 * 1024) {
-                  onError("バックアップは50MB以内にしてください");
-                  return;
-                }
-                if (
-                  !confirm(
-                    "現在の付箋・設定を、このバックアップの内容に戻します。現在のデータは先にバックアップします。復元しますか？",
-                  )
+          <button
+            disabled={busy}
+            onClick={async () => {
+              if (
+                !confirm(
+                  "現在のタスク・設定をバックアップの内容に戻します。現在のデータは先にバックアップします。復元しますか？",
                 )
-                  return;
-                setBusy(true);
-                try {
-                  const encoded = await new Promise<string>(
-                    (resolve, reject) => {
-                      const r = new FileReader();
-                      r.onload = () => resolve(String(r.result).split(",")[1]);
-                      r.onerror = reject;
-                      r.readAsDataURL(f);
-                    },
-                  );
-                  await api("RestoreBackup", encoded);
+              )
+                return;
+              setBusy(true);
+              setSaveError("");
+              try {
+                const restored = await api<boolean>("RestoreBackupFile");
+                if (restored) {
                   localStorage.clear();
                   onSaved();
                   onClose();
-                } catch (e) {
-                  onError(e);
-                } finally {
-                  setBusy(false);
                 }
-              }}
-            />
-          </label>
+              } catch (e) {
+                setSaveError(String(e));
+                onError(e);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            バックアップZIPから復元
+          </button>
         </div>
         <footer>
+          {saveError && (
+            <p role="alert" className="danger">
+              {saveError}
+            </p>
+          )}
           <button
             disabled={busy}
             className="primary"
             onClick={async () => {
               setBusy(true);
+              setSaveError("");
               try {
                 await api("SaveSettings", {
                   ...v,
@@ -224,6 +238,7 @@ export function SettingsForm({
                 onSaved();
                 onClose();
               } catch (e) {
+                setSaveError(String(e));
                 onError(e);
               } finally {
                 setBusy(false);

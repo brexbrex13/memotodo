@@ -34,6 +34,10 @@ import { TaskDetail, DraftHandle } from "./TaskDetail";
 import { SeriesForm } from "./SeriesForm";
 import { SettingsForm } from "./SettingsForm";
 import { CategoryManager } from "./CategoryManager";
+import { ReminderFields } from "./ReminderFields";
+import { useSuggestions } from "./Suggestions";
+import { UndoToast } from "./UndoToast";
+import { date } from "./types";
 import { Icon } from "./Icons";
 
 function Bell() {
@@ -73,6 +77,7 @@ function Row({
   open,
   complete,
   toggleImportant,
+  toggleToday,
   drag,
 }: {
   t: Task;
@@ -80,6 +85,7 @@ function Row({
   open: () => void;
   complete: () => void;
   toggleImportant: () => void;
+  toggleToday: () => void;
   drag: boolean;
 }) {
   const s = useSortable({ id: t.id, disabled: !drag });
@@ -111,6 +117,17 @@ function Row({
       >
         {t.important ? "★" : "☆"}
       </button>
+      {t.status === "pending" && !t.deleted_at && (
+        <button
+          className="today-toggle"
+          aria-label={t.title + "を今日やる"}
+          aria-pressed={t.today_date === date()}
+          data-tip="今日やるを切り替える。期限は変わりません。"
+          onClick={toggleToday}
+        >
+          <Icon name="sun" filled={t.today_date === date()} />
+        </button>
+      )}
       <button className="card-content" onClick={open}>
         <span className="task-title">{t.title}</span>
         {t.memo && (
@@ -180,6 +197,8 @@ export default function App() {
     [quickOptions, setQuickOptions] = useState({
       deadline: "",
       reminder_at: "",
+      reminder_mode: "",
+      reminder_time: "",
       important: false,
     }),
     [selected, setSelected] = useState<Task | null>(null),
@@ -193,13 +212,23 @@ export default function App() {
   useTheme(data?.settings.theme);
   const handle = useRef<DraftHandle | null>(null),
     quickRef = useRef<HTMLTextAreaElement>(null);
+  const suggest = useSuggestions(
+    data?.tasks ?? [],
+    quick,
+    data?.settings.suggest_min_count ?? 3,
+    setQuick,
+    category,
+  );
   const report = useCallback(
     (e: unknown) => setError(e instanceof Error ? e.message : String(e)),
     [],
   );
+  const reloadSequence = useRef(0);
   const reload = useCallback(async () => {
+    const sequence = ++reloadSequence.current;
     try {
-      setData(await api<Snapshot>("GetSnapshot"));
+      const snapshot = await api<Snapshot>("GetSnapshot");
+      if (sequence === reloadSequence.current) setData(snapshot);
     } catch (e) {
       report(e);
     }
@@ -327,9 +356,17 @@ export default function App() {
         ...emptyTask(category > 0 ? category : 0),
         title: quick,
         ...quickOptions,
+        today_date: view === "today" ? date() : "",
       });
       setQuick("");
-      setQuickOptions({ deadline: "", reminder_at: "", important: false });
+      setQuickOptions({
+        deadline: "",
+        reminder_at: "",
+        reminder_mode: "",
+        reminder_time: "",
+        important: false,
+      });
+      suggest.reset();
       setQuickOptionsOpen(false);
       await reload();
       quickRef.current?.focus();
@@ -388,6 +425,7 @@ export default function App() {
         (view !== "board" && view !== "recurring") ||
         (view === "recurring" ? t.series_id > 0 : t.series_id === 0),
     )
+    .filter((t) => view !== "today" || t.today_date === date())
     .filter((t) => category < 0 || t.category_id === category)
     .filter((t) => !important || t.important)
     .filter((t) => !dated || t.deadline)
@@ -405,11 +443,15 @@ export default function App() {
     );
   tasks = tasks.sort((a, b) => a.sort_order - b.sort_order || b.id - a.id);
   const groups = (
-    view === "board" || view === "recurring" ? visibleCategories : categories
+    view === "board" || view === "recurring" || view === "today"
+      ? visibleCategories
+      : categories
   )
     .filter((c) => category < 0 || c.id === category)
     .filter(
-      (c) => view !== "recurring" || tasks.some((t) => t.category_id === c.id),
+      (c) =>
+        (view !== "recurring" && view !== "today") ||
+        tasks.some((t) => t.category_id === c.id),
     );
   const drag =
     (view === "board" || view === "recurring") &&
@@ -650,7 +692,7 @@ export default function App() {
       )}
       <div className="workspace">
         <main className="board-main">
-          {view === "board" && (
+          {(view === "board" || view === "today") && (
             <div className="quick" data-popup>
               <textarea
                 ref={quickRef}
@@ -663,8 +705,14 @@ export default function App() {
                 data-tip="Enterで追加、Shift+Enterで改行"
                 value={quick}
                 disabled={adding}
-                onChange={(e) => setQuick(e.target.value)}
+                onFocus={suggest.reset}
+                onBlur={suggest.blur}
+                onChange={(e) => {
+                  setQuick(e.target.value);
+                  suggest.reset();
+                }}
                 onKeyDown={(e) => {
+                  if (suggest.keyDown(e)) return;
                   if (
                     e.key === "Enter" &&
                     !e.altKey &&
@@ -677,6 +725,7 @@ export default function App() {
                   }
                 }}
               />
+              {suggest.list}
               <button
                 className="quick-clock"
                 aria-label="登録時の期限・通知"
@@ -691,7 +740,9 @@ export default function App() {
                 quickOptions.important) && (
                 <small className="quick-options-summary">
                   {quickOptions.deadline && "期限 " + quickOptions.deadline}
-                  {quickOptions.reminder_at && " · 通知あり"}
+                  {(quickOptions.reminder_at ||
+                    quickOptions.reminder_mode === "deadline") &&
+                    " · 通知あり"}
                   {quickOptions.important && " · ★"}
                 </small>
               )}
@@ -700,32 +751,10 @@ export default function App() {
                   className="popover quick-options"
                   aria-label="登録時の設定"
                 >
-                  <label>
-                    期限日
-                    <input
-                      type="date"
-                      value={quickOptions.deadline}
-                      onChange={(e) =>
-                        setQuickOptions({
-                          ...quickOptions,
-                          deadline: e.target.value,
-                        })
-                      }
-                    />
-                  </label>
-                  <label>
-                    通知時刻
-                    <input
-                      type="datetime-local"
-                      value={quickOptions.reminder_at}
-                      onChange={(e) =>
-                        setQuickOptions({
-                          ...quickOptions,
-                          reminder_at: e.target.value,
-                        })
-                      }
-                    />
-                  </label>
+                  <ReminderFields
+                    value={quickOptions}
+                    onChange={(p) => setQuickOptions((v) => ({ ...v, ...p }))}
+                  />
                   <label className="check">
                     <input
                       type="checkbox"
@@ -745,6 +774,13 @@ export default function App() {
           )}
           <div className="filters">
             <button
+              className={view === "today" ? "active" : ""}
+              onClick={() => setTab("today")}
+            >
+              <Icon name="sun" />
+              今日やる
+            </button>
+            <button
               className={
                 "recurring-tab " + (view === "recurring" ? "active" : "")
               }
@@ -756,14 +792,21 @@ export default function App() {
               className={view === "board" && category < 0 ? "active" : ""}
               onClick={() => setTab("board")}
             >
-              すべて
+              通常
             </button>
             {visibleCategories.map((c) => (
               <button
                 key={c.id}
                 className={category === c.id ? "active" : ""}
                 onClick={() =>
-                  setTab(view === "recurring" ? "recurring" : "board", c.id)
+                  setTab(
+                    view === "recurring"
+                      ? "recurring"
+                      : view === "today"
+                        ? "today"
+                        : "board",
+                    c.id,
+                  )
                 }
               >
                 {c.name}
@@ -843,6 +886,11 @@ export default function App() {
                         drag={drag}
                         open={() => void open(t)}
                         complete={() => void state(t, "done")}
+                        toggleToday={() =>
+                          void api("ToggleToday", t.id)
+                            .then(reload)
+                            .catch(report)
+                        }
                         toggleImportant={() =>
                           void api("ToggleImportant", t.id)
                             .then(reload)
@@ -1038,6 +1086,7 @@ export default function App() {
           onError={report}
         />
       )}
+      <UndoToast onError={report} />
       {settings && (
         <SettingsForm
           initial={data.settings}

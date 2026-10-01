@@ -44,7 +44,7 @@ test("task, rich memo, save-close, history and reopen", async ({ page }) => {
   await menu(page, "完了済み");
   await row.locator(".card-content").click();
   await page.getByRole("button", { name: "再開する", exact: true }).click();
-  await page.getByRole("button", { name: "すべて", exact: true }).click();
+  await page.getByRole("button", { name: "通常", exact: true }).click();
   await expect(row).toBeVisible();
 });
 test("category context, live colors, custom palette, dormancy and reordering", async ({
@@ -177,7 +177,7 @@ test("DnD across category boxes including empty categories", async ({
   page,
 }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "すべて", exact: true }).click();
+  await page.getByRole("button", { name: "通常", exact: true }).click();
   const source = page
     .locator("article")
     .filter({ hasText: "カテゴリに自動登録" });
