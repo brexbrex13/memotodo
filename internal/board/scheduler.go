@@ -1,6 +1,7 @@
 package board
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -25,7 +26,16 @@ func addNotification(q queryer, n Notification) (bool, error) {
 
 // Tick uses wall time, so app downtime, sleep, midnight and clock changes do not
 // lose scheduled reminders. Persisted keys make retries and restarts idempotent.
-func (s *Store) Tick(now time.Time, _ bool) (bool, error) {
+func (s *Store) Tick(now time.Time, startup bool) (bool, error) {
+	return s.tick(now, startup, true)
+}
+
+// Manual edits can update reminders but must not replay an elapsed summary slot.
+func (s *Store) SyncChanges(now time.Time) (bool, error) {
+	return s.tick(now, false, false)
+}
+
+func (s *Store) tick(now time.Time, startup, summaries bool) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	tx, e := s.db.Begin()
@@ -99,7 +109,20 @@ func (s *Store) Tick(now time.Time, _ bool) (bool, error) {
 			}
 		}
 	}
-	if slot != "" {
+	if slot != "" && summaries {
+		key := "summary:" + Date(now) + ":" + slot
+		var consumed string
+		if e := tx.QueryRow("SELECT value FROM metadata WHERE key='summary_cursor'").Scan(&consumed); e != nil && !errors.Is(e, sql.ErrNoRows) {
+			return false, e
+		}
+		if consumed == key {
+			return changed, tx.Commit()
+		}
+		// Consume the slot even when there are no tasks. Adding a deadline later
+		// must not turn a previously empty summary into a surprise notification.
+		if _, e := tx.Exec("INSERT INTO metadata(key,value) VALUES('summary_cursor',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", key); e != nil {
+			return false, e
+		}
 		counts := map[string]int{}
 		for _, t := range ts {
 			if u := Urgency(t, now, settings); u != "" {
@@ -114,7 +137,6 @@ func (s *Store) Tick(now time.Time, _ bool) (bool, error) {
 				}
 			}
 			// One pending summary window; acknowledge obsolete summary events when updating.
-			key := "summary:" + Date(now) + ":" + slot
 			yes, e := addNotification(tx, Notification{Key: key, Kind: "summary", Title: strings.Join(parts, "・"), FiredAt: ISO(now)})
 			if e != nil {
 				return false, e

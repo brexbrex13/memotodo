@@ -157,7 +157,7 @@ func startNativeVerification(a *App) {
 			if visible == 0 {
 				return fmt.Errorf("%s: notification not visible", label)
 			}
-			if style&0x8 == 0 || style&0x80 == 0 || style&0x40000 != 0 {
+			if style&0x8 == 0 || style&0x80 != 0 || style&0x40000 == 0 {
 				return fmt.Errorf("%s: incorrect topmost/taskbar style: %x", label, style)
 			}
 			if active != foreground {
@@ -256,6 +256,26 @@ func startNativeVerification(a *App) {
 			return
 		}
 		result["mouse-acknowledgement"] = true
+		a.main.Hide()
+		application.InvokeSync(a.traySingleClick)
+		time.Sleep(doubleClickDelay() + 500*time.Millisecond)
+		miniVisible, _, _ := user32.NewProc("IsWindowVisible").Call(uintptr(a.mini.NativeWindow()))
+		mainVisible, _, _ := user32.NewProc("IsWindowVisible").Call(uintptr(a.main.NativeWindow()))
+		if miniVisible == 0 || mainVisible != 0 {
+			finish(fmt.Errorf("tray single click did not open only the quick input"))
+			return
+		}
+		a.mini.Hide()
+		a.trayDouble.Store(0)
+		application.InvokeSync(func() { a.traySingleClick(); a.trayDoubleClick(); a.traySingleClick() })
+		time.Sleep(doubleClickDelay() + 500*time.Millisecond)
+		miniVisible, _, _ = user32.NewProc("IsWindowVisible").Call(uintptr(a.mini.NativeWindow()))
+		mainVisible, _, _ = user32.NewProc("IsWindowVisible").Call(uintptr(a.main.NativeWindow()))
+		if miniVisible != 0 || mainVisible == 0 {
+			finish(fmt.Errorf("tray double click left a delayed quick input"))
+			return
+		}
+		result["tray-single-double-click"] = true
 		finish(nil)
 	}()
 }

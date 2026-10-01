@@ -136,9 +136,18 @@ export function TaskDetail({
     }
   };
   return (
-    <aside className="detail" aria-label="タスクの詳細">
+    <aside className="detail task-detail" aria-label="タスクの詳細">
       <header>
         <h2>{task.series_id ? "定期タスク" : "タスクの詳細"}</h2>
+        {draft.status === "pending" && !draft.deleted_at && (
+          <button
+            className="primary complete-task"
+            disabled={busy}
+            onClick={() => void state("done")}
+          >
+            完了
+          </button>
+        )}
         <button onClick={() => void leave()} aria-label="詳細を閉じる">
           ×
         </button>
@@ -226,13 +235,6 @@ export function TaskDetail({
             </button>
           ) : draft.status === "pending" ? (
             <>
-              <button
-                className="primary"
-                disabled={busy}
-                onClick={() => void state("done")}
-              >
-                完了
-              </button>
               {task.series_id > 0 && (
                 <button disabled={busy} onClick={() => void state("skipped")}>
                   今回は見送る

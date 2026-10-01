@@ -166,7 +166,9 @@ test("notification close does not complete and summary open closes only summary"
     notice.getByRole("button", { name: "通知を閉じる" }),
   ).toBeVisible();
   await notice.screenshot({ path: "test-results/notification.png" });
-  await notice.getByRole("button", { name: "閉じる", exact: true }).click();
+  await notice
+    .getByRole("button", { name: "通知を閉じる", exact: true })
+    .click();
   await expect(
     notice.getByRole("button", { name: "通知を閉じる" }),
   ).toHaveCount(0);

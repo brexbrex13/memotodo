@@ -6,6 +6,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"os/exec"
 	"runtime"
+	"time"
 )
 
 func noticeStyle() int                                    { return 0 }
@@ -21,3 +22,6 @@ func openFile(path string) error {
 	return exec.Command("xdg-open", path).Start()
 }
 func forgetNotice(w *application.WebviewWindow) {}
+func doubleClickDelay() time.Duration           { return 500 * time.Millisecond }
+
+func hideNotice(w *application.WebviewWindow) { w.Hide() }

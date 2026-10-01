@@ -59,8 +59,8 @@ func main() {
 	})
 	ico, _ := assets.ReadFile("internal/tray/icon.ico")
 	width, height := store.WindowSize()
-	service.main = service.desktop.Window.NewWithOptions(application.WebviewWindowOptions{Name: "board", Title: "MemoTodo", Width: width, Height: height, MinWidth: 640, MinHeight: 420, Frameless: true, MinimiseButtonState: application.ButtonHidden, MaximiseButtonState: application.ButtonHidden, URL: "/", BackgroundColour: application.NewRGB(247, 246, 241)})
-	service.notice = service.desktop.Window.NewWithOptions(application.WebviewWindowOptions{Name: "notifications", Title: "MemoTodo 通知", Width: 360, Height: 170, Hidden: true, Frameless: true, AlwaysOnTop: true, DisableResize: true, URL: "/?window=notifications", Windows: application.WindowsWindow{HiddenOnTaskbar: true, ExStyle: noticeStyle()}, BackgroundColour: application.NewRGB(247, 246, 241)})
+	service.main = service.desktop.Window.NewWithOptions(application.WebviewWindowOptions{Name: "board", Title: "MemoTodo", Width: width, Height: height, MinWidth: 360, MinHeight: 420, Frameless: true, MinimiseButtonState: application.ButtonHidden, MaximiseButtonState: application.ButtonHidden, URL: "/", BackgroundColour: application.NewRGB(247, 246, 241)})
+	service.notice = service.desktop.Window.NewWithOptions(application.WebviewWindowOptions{Name: "notifications", Title: "MemoTodo 通知", Width: 360, Height: 170, Hidden: true, Frameless: true, AlwaysOnTop: true, DisableResize: true, URL: "/?window=notifications", Windows: application.WindowsWindow{HiddenOnTaskbar: false, ExStyle: noticeStyle()}, BackgroundColour: application.NewRGB(247, 246, 241)})
 	service.main.RegisterHook(events.Common.WindowMaximise, func(ev *application.WindowEvent) { ev.Cancel() })
 	service.main.RegisterHook(events.Common.WindowClosing, func(ev *application.WindowEvent) {
 		if service.quitting.Load() {
@@ -76,11 +76,21 @@ func main() {
 	})
 	tray := service.desktop.SystemTray.New()
 	tray.SetIcon(ico)
-	tray.SetTooltip("MemoTodo — クリックしてボードを開く")
-	tray.OnClick(func() { service.openMain(0) })
+	service.mini = service.desktop.Window.NewWithOptions(application.WebviewWindowOptions{Name: "quick-add", Title: "MemoTodo タスク追加", Width: 360, Height: 105, Hidden: true, Frameless: true, AlwaysOnTop: true, DisableResize: true, URL: "/?window=quick-add", Windows: application.WindowsWindow{HiddenOnTaskbar: true}, BackgroundColour: application.NewRGB(247, 246, 241)})
+	service.mini.RegisterHook(events.Common.WindowClosing, func(ev *application.WindowEvent) {
+		if !service.quitting.Load() {
+			ev.Cancel()
+			service.mini.Hide()
+		}
+	})
+	tray.AttachWindow(service.mini).WindowOffset(8)
+	tray.SetTooltip("MemoTodo — クリックでタスク追加／ダブルクリックで一覧")
+	service.tray = tray
+	tray.OnClick(service.traySingleClick)
+	tray.OnDoubleClick(service.trayDoubleClick)
 	menu := application.NewMenu()
 	menu.Add("ボードを開く").OnClick(func(*application.Context) { service.openMain(0) })
-	menu.Add("付箋を追加").OnClick(func(*application.Context) { service.openMain(0); service.desktop.Event.Emit("board:quick") })
+	menu.Add("タスクを追加").OnClick(func(*application.Context) { tray.ShowWindow(); service.desktop.Event.Emit("board:mini-focus") })
 	menu.AddSeparator()
 	menu.Add("終了（保存して終了）").OnClick(func(*application.Context) {
 		service.main.Show()
