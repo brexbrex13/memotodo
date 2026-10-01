@@ -43,9 +43,25 @@ func Open(dir string) (*Store, error) {
 		db.Close()
 		return nil, e
 	}
+	// Freeze old inherited lead times at their current value. Common settings
+	// now only seed new rules, never change an existing rule's behaviour.
+	e = s.freezeInheritedLead(db)
+	if e != nil {
+		db.Close()
+		return nil, e
+	}
 	return s, nil
 }
 func (s *Store) Close() error { return s.db.Close() }
+
+func (s *Store) freezeInheritedLead(q queryer) error {
+	settings, e := s.settings(q)
+	if e != nil {
+		return e
+	}
+	_, e = q.Exec("UPDATE series SET data=json_set(data,'$.show_days',?,'$.version',COALESCE(json_extract(data,'$.version'),0)+1) WHERE json_extract(data,'$.show_days')=-1", settings.SeriesShowDays)
+	return e
+}
 
 type queryer interface {
 	Query(string, ...any) (*sql.Rows, error)
@@ -349,6 +365,9 @@ func (s *Store) DeleteCategory(id int64) error {
 func (s *Store) SaveSettings(v Settings) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if v.Theme != "" && v.Theme != "light" && v.Theme != "dark" && v.Theme != "system" {
+		return errors.New("配色設定が不正です")
+	}
 	if v.SeriesShowDays < 0 || v.SeriesShowDays > 366 || v.NearDays < 0 || v.NearDays > 366 || v.FontSize < 12 || v.FontSize > 22 {
 		return errors.New("設定値が範囲外です")
 	}

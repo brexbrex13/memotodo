@@ -382,8 +382,11 @@ func TestSharedAdditionDaysAndNotificationValidation(t *testing.T) {
 	}
 	settings := snap(t, s).Settings
 	settings.SeriesShowDays = 0
-	if e := s.SaveSettings(settings); e == nil {
-		t.Fatal("shared lead allowed reminders before task addition")
+	if e := s.SaveSettings(settings); e != nil {
+		t.Fatal(e)
+	}
+	if snap(t, s).Series[0].ShowDays != 7 {
+		t.Fatal("common default changed an existing rule")
 	}
 	v = weekly()
 	v.FirstDue = ""

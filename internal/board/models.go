@@ -69,6 +69,7 @@ type Notification struct {
 	Acknowledged bool   `json:"acknowledged"`
 }
 type Settings struct {
+	Theme          string        `json:"theme"`
 	SeriesShowDays int           `json:"series_show_days"`
 	CustomColors   []ColorPreset `json:"custom_colors"`
 	NearDays       int           `json:"near_days"`

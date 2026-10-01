@@ -65,6 +65,7 @@ export type ColorPreset = {
   foreground: string;
 };
 export type Settings = {
+  theme?: "light" | "dark" | "system";
   series_show_days: number;
   custom_colors: ColorPreset[];
   near_days: number;

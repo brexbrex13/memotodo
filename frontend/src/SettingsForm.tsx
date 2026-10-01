@@ -29,7 +29,7 @@ export function SettingsForm({
         <div className="modal-body">
           <div className="formgrid">
             <label>
-              定期タスク：タスクリストへの追加（日数）
+              新規定期タスクの追加日数（初期値）
               <input
                 type="number"
                 min={0}

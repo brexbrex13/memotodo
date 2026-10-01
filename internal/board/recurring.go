@@ -121,6 +121,7 @@ func (s *Store) SaveSeries(v Series) (Series, error) {
 	if resolved.ShowDays == -1 {
 		resolved.ShowDays = settings.SeriesShowDays
 	}
+	v.ShowDays = resolved.ShowDays
 	if e := validateSeries(resolved); e != nil {
 		return v, e
 	}

@@ -118,7 +118,7 @@ describe("sticky board and notification semantics", () => {
       },
     ];
     render(<Notifications />);
-    fireEvent.click(await screen.findByRole("button", { name: /^閉じる$/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "通知を閉じる" }));
     await waitFor(() => expect(api).toHaveBeenCalledWith("Acknowledge", 7));
     expect(api).not.toHaveBeenCalledWith("SetState", 1, "done");
   });

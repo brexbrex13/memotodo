@@ -23,21 +23,25 @@ import (
 )
 
 type App struct {
-	store         *board.Store
-	desktop       *application.App
-	main, notice  *application.WebviewWindow
-	stop          chan struct{}
-	wg            sync.WaitGroup
-	mu            sync.Mutex
-	seen          map[int64]bool
-	noticeWindows map[int64]*application.WebviewWindow
-	noticeLoaded  map[int64]bool
-	noticeShown   map[int64]bool
-	noticeVisible bool
-	noticeReady   atomic.Bool
-	startOnce     sync.Once
-	stopOnce      sync.Once
-	quitting      atomic.Bool
+	store          *board.Store
+	desktop        *application.App
+	main, notice   *application.WebviewWindow
+	mini           *application.WebviewWindow
+	tray           *application.SystemTray
+	trayGeneration atomic.Uint64
+	trayDouble     atomic.Int64
+	stop           chan struct{}
+	wg             sync.WaitGroup
+	mu             sync.Mutex
+	seen           map[int64]bool
+	noticeWindows  map[int64]*application.WebviewWindow
+	noticeLoaded   map[int64]bool
+	noticeShown    map[int64]bool
+	noticeVisible  bool
+	noticeReady    atomic.Bool
+	startOnce      sync.Once
+	stopOnce       sync.Once
+	quitting       atomic.Bool
 }
 
 func (a *App) start() { a.startOnce.Do(func() { a.wg.Add(1); go a.run() }) }
@@ -95,7 +99,13 @@ func (a *App) tick(startup bool) {
 	}
 	a.refreshNotice()
 }
-func (a *App) changed() { a.tick(false); a.desktop.Event.Emit("board:changed") }
+func (a *App) changed() {
+	if _, e := a.store.SyncChanges(time.Now()); e != nil {
+		a.desktop.Event.Emit("board:error", "通知処理に失敗しました: "+e.Error())
+	}
+	a.refreshNotice()
+	a.desktop.Event.Emit("board:changed")
+}
 func (a *App) refreshNotice() {
 	if a.quitting.Load() {
 		return
@@ -142,7 +152,7 @@ func (a *App) refreshNotice() {
 			}
 		}
 		if !found {
-			w.Hide()
+			hideNotice(w)
 			forgetNotice(w)
 			w.Close()
 			delete(a.noticeWindows, id)
@@ -152,11 +162,11 @@ func (a *App) refreshNotice() {
 	}
 	if pending == 0 || paused {
 		if a.noticeVisible {
-			a.notice.Hide()
+			hideNotice(a.notice)
 			a.noticeVisible = false
 		}
 		for id, w := range a.noticeWindows {
-			w.Hide()
+			hideNotice(w)
 			a.noticeShown[id] = false
 		}
 		return
@@ -172,7 +182,7 @@ func (a *App) refreshNotice() {
 	for i, n := range live {
 		if i == 0 {
 			if previous := a.noticeWindows[n.ID]; previous != nil {
-				previous.Hide()
+				hideNotice(previous)
 				forgetNotice(previous)
 				previous.Close()
 				delete(a.noticeWindows, n.ID)
@@ -204,7 +214,7 @@ func (a *App) refreshNotice() {
 		} else {
 			w = a.noticeWindows[n.ID]
 			if w == nil {
-				w = a.desktop.Window.NewWithOptions(application.WebviewWindowOptions{Name: fmt.Sprintf("notice-%d", n.ID), Title: "MemoTodo 通知", Width: width, Height: height, Hidden: true, Frameless: true, AlwaysOnTop: true, DisableResize: true, URL: fmt.Sprintf("/?window=notifications&notice=%d", n.ID), Windows: application.WindowsWindow{HiddenOnTaskbar: true, ExStyle: noticeStyle()}, BackgroundColour: application.NewRGB(255, 250, 240)})
+				w = a.desktop.Window.NewWithOptions(application.WebviewWindowOptions{Name: fmt.Sprintf("notice-%d", n.ID), Title: "MemoTodo 通知", Width: width, Height: height, Hidden: true, Frameless: true, AlwaysOnTop: true, DisableResize: true, URL: fmt.Sprintf("/?window=notifications&notice=%d", n.ID), Windows: application.WindowsWindow{HiddenOnTaskbar: false, ExStyle: noticeStyle()}, BackgroundColour: application.NewRGB(255, 250, 240)})
 				a.noticeWindows[n.ID] = w
 			}
 		}
@@ -223,7 +233,7 @@ func (a *App) refreshNotice() {
 	}
 	for id, w := range a.noticeWindows {
 		if !visibleIDs[id] && a.noticeShown[id] {
-			w.Hide()
+			hideNotice(w)
 			a.noticeShown[id] = false
 		}
 	}
@@ -251,6 +261,9 @@ func (a *App) refreshNotice() {
 	}
 }
 func (a *App) openMain(id int64) {
+	if a.mini != nil {
+		a.mini.Hide()
+	}
 	a.main.Show()
 	a.main.UnMinimise()
 	a.main.Focus()
@@ -343,6 +356,18 @@ func (a *App) TestNotification() error {
 	return e
 }
 func (a *App) OpenTask(id int64) { a.openMain(id) }
+func (a *App) HideQuickAdd() {
+	if a.mini != nil {
+		a.mini.Hide()
+	}
+}
+func (a *App) ToggleImportant(id int64) error {
+	if e := a.store.ToggleImportant(id); e != nil {
+		return e
+	}
+	a.changed()
+	return nil
+}
 func (a *App) OpenFromNotice(notificationID, taskID int64) error {
 	if e := a.store.Acknowledge(notificationID); e != nil {
 		return e
@@ -463,4 +488,25 @@ func (a *App) RestoreBackup(encoded string) error {
 	a.mu.Unlock()
 	a.changed()
 	return nil
+}
+
+func (a *App) traySingleClick() {
+	wait := doubleClickDelay()
+	if last := a.trayDouble.Load(); last != 0 && time.Since(time.Unix(0, last)) < wait {
+		return
+	}
+	generation := a.trayGeneration.Add(1)
+	time.AfterFunc(wait, func() {
+		if a.quitting.Load() || a.trayGeneration.Load() != generation {
+			return
+		}
+		a.tray.ShowWindow()
+		a.desktop.Event.Emit("board:mini-focus")
+	})
+}
+func (a *App) trayDoubleClick() {
+	a.trayDouble.Store(time.Now().UnixNano())
+	a.trayGeneration.Add(1)
+	a.mini.Hide()
+	a.openMain(0)
 }

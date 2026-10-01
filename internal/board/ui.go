@@ -6,6 +6,18 @@ import (
 	"time"
 )
 
+func (s *Store) ToggleImportant(id int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t, e := load[Task](s.db, "tasks", id)
+	if e != nil {
+		return e
+	}
+	t.Important = !t.Important
+	t.Version++
+	return put(s.db, "tasks", id, t)
+}
+
 // New rules begin with the first matching deadline on/after registration.
 // Their durable cursor subsequently accumulates missed cycles during downtime.
 func firstDue(v Series, now time.Time) time.Time {
@@ -91,7 +103,7 @@ func (s *Store) WindowSize() (int, int) {
 	defer s.mu.Unlock()
 	var b string
 	var v [2]int
-	if s.db.QueryRow("SELECT value FROM metadata WHERE key='window_size'").Scan(&b) == nil && json.Unmarshal([]byte(b), &v) == nil && v[0] >= 640 && v[1] >= 420 {
+	if s.db.QueryRow("SELECT value FROM metadata WHERE key='window_size'").Scan(&b) == nil && json.Unmarshal([]byte(b), &v) == nil && v[0] >= 360 && v[1] >= 420 {
 		return v[0], v[1]
 	}
 	return 960, 700
@@ -99,7 +111,7 @@ func (s *Store) WindowSize() (int, int) {
 func (s *Store) SaveWindowSize(width, height int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if width < 640 || height < 420 || width > 20000 || height > 20000 {
+	if width < 360 || height < 420 || width > 20000 || height > 20000 {
 		return nil
 	}
 	b, e := json.Marshal([2]int{width, height})

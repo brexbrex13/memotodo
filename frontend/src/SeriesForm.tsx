@@ -19,6 +19,7 @@ export function SeriesForm({
 }) {
   const [v, setV] = useState({
       ...initial,
+      show_days: initial.show_days < 0 ? defaultShowDays : initial.show_days,
       due_time: "",
       end_date: "",
       notify_mode:
@@ -184,16 +185,6 @@ export function SeriesForm({
                 </label>
               </div>
             )}
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={v.show_days === -1}
-                onChange={(e) =>
-                  patch({ show_days: e.target.checked ? -1 : defaultShowDays })
-                }
-              />
-              共通の追加日数を使う
-            </label>
             <label
               className="inline-field"
               data-tip="期限まで残り0〜指定日数になったら追加します。登録時も同じ判定です。"
@@ -204,7 +195,6 @@ export function SeriesForm({
                 type="number"
                 min={0}
                 max={366}
-                disabled={v.show_days === -1}
                 value={lead}
                 onChange={(e) => patch({ show_days: +e.target.value })}
               />

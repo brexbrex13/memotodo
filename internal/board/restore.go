@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // Restore accepts only our explicit export format. It preserves all existing
@@ -96,6 +97,38 @@ func (s *Store) Restore(data []byte) error {
 			return e
 		}
 	}
+	for _, b := range dump.Tables["metadata"] {
+		var v struct {
+			Key   string `json:"key"`
+			Value string `json:"value"`
+		}
+		if e = json.Unmarshal(b, &v); e != nil {
+			return e
+		}
+		switch v.Key {
+		case "settings":
+			var settings Settings
+			if e = json.Unmarshal([]byte(v.Value), &settings); e != nil {
+				return e
+			}
+		case "summary_cursor":
+			if !strings.HasPrefix(v.Value, "summary:") {
+				return errors.New("定時通知の記録が不正です")
+			}
+			if _, e = time.Parse("2006-01-02:15:04", strings.TrimPrefix(v.Value, "summary:")); e != nil {
+				return errors.New("定時通知の記録が不正です")
+			}
+		default:
+			return fmt.Errorf("未知の設定: %s", v.Key)
+		}
+		if _, e = tx.Exec("INSERT INTO metadata(key,value) VALUES(?,?)", v.Key, v.Value); e != nil {
+			return e
+		}
+	}
+	restoredSettings, e := s.settings(tx)
+	if e != nil {
+		return e
+	}
 	for _, b := range dump.Tables["categories"] {
 		var c Category
 		if e = json.Unmarshal(b, &c); e != nil {
@@ -116,6 +149,10 @@ func (s *Store) Restore(data []byte) error {
 		}
 		if v.ID < 1 {
 			return errors.New("定期設定IDが不正です")
+		}
+		if v.ShowDays == -1 {
+			v.ShowDays = restoredSettings.SeriesShowDays
+			v.Version++
 		}
 		if e = validateSeries(v); e != nil {
 			return e
@@ -158,24 +195,8 @@ func (s *Store) Restore(data []byte) error {
 			return e
 		}
 	}
-	for _, b := range dump.Tables["metadata"] {
-		var v struct {
-			Key   string `json:"key"`
-			Value string `json:"value"`
-		}
-		if e = json.Unmarshal(b, &v); e != nil {
-			return e
-		}
-		if v.Key != "settings" {
-			return fmt.Errorf("未知の設定: %s", v.Key)
-		}
-		var settings Settings
-		if e = json.Unmarshal([]byte(v.Value), &settings); e != nil {
-			return e
-		}
-		if _, e = tx.Exec("INSERT INTO metadata(key,value) VALUES(?,?)", v.Key, v.Value); e != nil {
-			return e
-		}
+	if e = s.freezeInheritedLead(tx); e != nil {
+		return e
 	}
 	return tx.Commit()
 }

@@ -18,6 +18,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { api, on } from "./api";
+import { useTheme } from "./theme";
 import {
   Category,
   Series,
@@ -33,6 +34,7 @@ import { TaskDetail, DraftHandle } from "./TaskDetail";
 import { SeriesForm } from "./SeriesForm";
 import { SettingsForm } from "./SettingsForm";
 import { CategoryManager } from "./CategoryManager";
+import { Icon } from "./Icons";
 
 function Bell() {
   return (
@@ -49,17 +51,35 @@ function Bell() {
     </svg>
   );
 }
+function Clock() {
+  return (
+    <svg
+      width="17"
+      height="17"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 6v6l4 2" />
+    </svg>
+  );
+}
 function Row({
   t,
   u,
   open,
   complete,
+  toggleImportant,
   drag,
 }: {
   t: Task;
   u: string;
   open: () => void;
   complete: () => void;
+  toggleImportant: () => void;
   drag: boolean;
 }) {
   const s = useSortable({ id: t.id, disabled: !drag });
@@ -82,11 +102,15 @@ function Row({
       >
         ⠿
       </button>
-      {t.important && (
-        <span className="star" data-tip="重要">
-          ★
-        </span>
-      )}
+      <button
+        className="star-toggle"
+        aria-label={t.title + "の重要マーク"}
+        aria-pressed={t.important}
+        data-tip="重要を切り替え"
+        onClick={toggleImportant}
+      >
+        {t.important ? "★" : "☆"}
+      </button>
       <button className="card-content" onClick={open}>
         <span className="task-title">{t.title}</span>
         {t.memo && (
@@ -105,7 +129,7 @@ function Row({
       )}
       {t.reminder_at && (
         <span data-tip={"通知 " + t.reminder_at.replace("T", " ").slice(0, 16)}>
-          ♧
+          <Bell />
         </span>
       )}
       {t.status === "pending" && !t.deleted_at && (
@@ -150,9 +174,14 @@ export default function App() {
     [query, setQuery] = useState(""),
     [important, setImportant] = useState(false),
     [dated, setDated] = useState(false),
-    [sort, setSort] = useState("manual"),
     [quick, setQuick] = useState(localStorage.getItem("quick-draft") ?? ""),
     [adding, setAdding] = useState(false),
+    [quickOptionsOpen, setQuickOptionsOpen] = useState(false),
+    [quickOptions, setQuickOptions] = useState({
+      deadline: "",
+      reminder_at: "",
+      important: false,
+    }),
     [selected, setSelected] = useState<Task | null>(null),
     [series, setSeries] = useState<Series | null>(null),
     [togglingSeries, setTogglingSeries] = useState<number | null>(null),
@@ -161,6 +190,7 @@ export default function App() {
     [menu, setMenu] = useState(false),
     [deadline, setDeadline] = useState(""),
     [search, setSearch] = useState(false);
+  useTheme(data?.settings.theme);
   const handle = useRef<DraftHandle | null>(null),
     quickRef = useRef<HTMLTextAreaElement>(null);
   const report = useCallback(
@@ -252,10 +282,11 @@ export default function App() {
   }, [data, category]);
   useEffect(() => {
     const click = (e: PointerEvent) => {
-      if (!(e.target as Element).closest("[data-popup],.popover")) {
-        setMenu(false);
+      const target = e.target as Element;
+      if (!target.closest('.app-menu,[aria-label="メニュー"]')) setMenu(false);
+      if (!target.closest(".deadline-popup,[data-deadline-trigger]"))
         setDeadline("");
-      }
+      if (!target.closest(".quick")) setQuickOptionsOpen(false);
     };
     const key = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.key === "n") {
@@ -295,8 +326,11 @@ export default function App() {
       await api("SaveTask", {
         ...emptyTask(category > 0 ? category : 0),
         title: quick,
+        ...quickOptions,
       });
       setQuick("");
+      setQuickOptions({ deadline: "", reminder_at: "", important: false });
+      setQuickOptionsOpen(false);
       await reload();
       quickRef.current?.focus();
     } catch (e) {
@@ -369,16 +403,7 @@ export default function App() {
           .toLocaleLowerCase()
           .includes(query.toLocaleLowerCase()),
     );
-  tasks = tasks.sort((a, b) =>
-    sort === "deadline"
-      ? (a.deadline || "9999").localeCompare(b.deadline || "9999")
-      : sort === "important"
-        ? Number(b.important) - Number(a.important) ||
-          a.sort_order - b.sort_order
-        : sort === "created"
-          ? b.created_at.localeCompare(a.created_at)
-          : a.sort_order - b.sort_order || b.id - a.id,
-  );
+  tasks = tasks.sort((a, b) => a.sort_order - b.sort_order || b.id - a.id);
   const groups = (
     view === "board" || view === "recurring" ? visibleCategories : categories
   )
@@ -388,7 +413,6 @@ export default function App() {
     );
   const drag =
     (view === "board" || view === "recurring") &&
-    sort === "manual" &&
     !query &&
     !important &&
     !dated;
@@ -446,6 +470,7 @@ export default function App() {
             className="icon"
             data-popup
             data-tip="期限の近い順に確認"
+            data-deadline-trigger
             aria-label="期限順の一覧"
             onClick={() => {
               setMenu(false);
@@ -480,18 +505,35 @@ export default function App() {
         </div>
       </header>
       {menu && (
-        <nav className="popover app-menu">
+        <nav className="popover app-menu" aria-label="メニュー項目">
+          <button onClick={() => void navigate(() => setPanel("notices"))}>
+            未確認の通知
+          </button>
+          <button onClick={() => setTab("history")}>完了済み</button>
+          <button onClick={() => setTab("trash")}>ごみ箱</button>
+          <hr />
           <button onClick={() => void navigate(() => setPanel("categories"))}>
             カテゴリ管理
           </button>
           <button onClick={() => void navigate(() => setPanel("series"))}>
             定期設定
           </button>
-          <button onClick={() => void navigate(() => setPanel("notices"))}>
-            未確認の通知
+          <hr />
+          <button
+            aria-label="ダークモード"
+            aria-pressed={data.settings.theme === "dark"}
+            onClick={() =>
+              void api("SaveSettings", {
+                ...data.settings,
+                theme: data.settings.theme === "dark" ? "light" : "dark",
+              })
+                .then(reload)
+                .catch(report)
+            }
+          >
+            ダークモード{" "}
+            <span>{data.settings.theme === "dark" ? "✓" : ""}</span>
           </button>
-          <button onClick={() => setTab("history")}>完了済み</button>
-          <button onClick={() => setTab("trash")}>ごみ箱</button>
           <button onClick={() => void navigate(() => setSettings(true))}>
             設定
           </button>
@@ -520,16 +562,14 @@ export default function App() {
         )}
       {urgent.length > 0 && (
         <section className="deadline-band" aria-label="期限の確認">
-          <div className="band-counts">
-            {["overdue", "today", "near"].map((u) => {
-              const n = urgent.filter(
-                (t) => urgency(t, data.settings) === u,
-              ).length;
-              return (
-                n > 0 && (
+          {["overdue", "today", "near"].map((u) => {
+            const items = urgent.filter((t) => urgency(t, data.settings) === u);
+            return (
+              items.length > 0 && (
+                <div className={"band-group " + u} key={u}>
                   <button
-                    key={u}
-                    className={u}
+                    className="band-label"
+                    data-deadline-trigger
                     data-popup
                     onClick={() => {
                       setMenu(false);
@@ -541,27 +581,33 @@ export default function App() {
                       : u === "near"
                         ? "近日"
                         : "期限超過"}{" "}
-                    {n}
+                    {items.length}
                   </button>
-                )
-              );
-            })}
-          </div>
-          <div className="band-items">
-            {urgent.slice(0, 5).map((t) => (
-              <button
-                key={t.id}
-                className={urgency(t, data.settings)}
-                data-tip={
-                  t.title + " · " + t.deadline + (t.series_id ? " · 定期" : "")
-                }
-                onClick={() => void open(t)}
-              >
-                {t.title}
-                <small>{t.deadline.slice(5, 10).replace("-", "/")}</small>
-              </button>
-            ))}
-          </div>
+                  <div className="band-items">
+                    {items.slice(0, 3).map((t) => (
+                      <button
+                        key={t.id}
+                        data-tip={t.title + " · " + t.deadline}
+                        onClick={() => void open(t)}
+                      >
+                        <span>{t.title}</span>
+                      </button>
+                    ))}
+                    {items.length > 3 && (
+                      <button
+                        className="band-more"
+                        data-deadline-trigger
+                        data-popup
+                        onClick={() => setDeadline(u)}
+                      >
+                        ＋{items.length - 3}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            );
+          })}
         </section>
       )}
       {deadline && (
@@ -604,6 +650,99 @@ export default function App() {
       )}
       <div className="workspace">
         <main className="board-main">
+          {view === "board" && (
+            <div className="quick" data-popup>
+              <textarea
+                ref={quickRef}
+                aria-label="新しい付箋"
+                placeholder={
+                  category > 0
+                    ? "このカテゴリに追加…"
+                    : "タスクを入力してEnterで追加"
+                }
+                data-tip="Enterで追加、Shift+Enterで改行"
+                value={quick}
+                disabled={adding}
+                onChange={(e) => setQuick(e.target.value)}
+                onKeyDown={(e) => {
+                  if (
+                    e.key === "Enter" &&
+                    !e.altKey &&
+                    !e.shiftKey &&
+                    !e.nativeEvent.isComposing &&
+                    e.keyCode !== 229
+                  ) {
+                    e.preventDefault();
+                    void add();
+                  }
+                }}
+              />
+              <button
+                className="quick-clock"
+                aria-label="登録時の期限・通知"
+                aria-expanded={quickOptionsOpen}
+                data-tip="期限・通知・重要を設定して登録"
+                onClick={() => setQuickOptionsOpen(!quickOptionsOpen)}
+              >
+                <Clock />
+              </button>
+              {(quickOptions.deadline ||
+                quickOptions.reminder_at ||
+                quickOptions.important) && (
+                <small className="quick-options-summary">
+                  {quickOptions.deadline && "期限 " + quickOptions.deadline}
+                  {quickOptions.reminder_at && " · 通知あり"}
+                  {quickOptions.important && " · ★"}
+                </small>
+              )}
+              {quickOptionsOpen && (
+                <div
+                  className="popover quick-options"
+                  aria-label="登録時の設定"
+                >
+                  <label>
+                    期限日
+                    <input
+                      type="date"
+                      value={quickOptions.deadline}
+                      onChange={(e) =>
+                        setQuickOptions({
+                          ...quickOptions,
+                          deadline: e.target.value,
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    通知時刻
+                    <input
+                      type="datetime-local"
+                      value={quickOptions.reminder_at}
+                      onChange={(e) =>
+                        setQuickOptions({
+                          ...quickOptions,
+                          reminder_at: e.target.value,
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="check">
+                    <input
+                      type="checkbox"
+                      checked={quickOptions.important}
+                      onChange={(e) =>
+                        setQuickOptions({
+                          ...quickOptions,
+                          important: e.target.checked,
+                        })
+                      }
+                    />
+                    重要
+                  </label>
+                </div>
+              )}
+            </div>
+          )}
           <div className="filters">
             <button
               className={
@@ -630,40 +769,34 @@ export default function App() {
                 {c.name}
               </button>
             ))}
-            <span className="spacer" />
+          </div>
+          <div className="task-filters" aria-label="タスクの絞り込み">
             <button
               aria-label="検索"
+              aria-expanded={search}
               data-tip="検索 Ctrl+F"
               onClick={() => setSearch(!search)}
             >
-              ⌕
+              <Icon name="search" />
             </button>
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={dated}
-                onChange={(e) => setDated(e.target.checked)}
-              />
-              期限あり
-            </label>
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={important}
-                onChange={(e) => setImportant(e.target.checked)}
-              />
-              重要
-            </label>
-            <select
-              aria-label="並び順"
-              value={sort}
-              onChange={(e) => setSort(e.target.value)}
+            <button
+              aria-label="期限あり"
+              aria-pressed={dated}
+              data-tip="期限があるタスクだけ表示"
+              onClick={() => setDated(!dated)}
             >
-              <option value="manual">手動順</option>
-              <option value="deadline">期限順</option>
-              <option value="important">重要順</option>
-              <option value="created">追加順</option>
-            </select>
+              <Icon name="clock" />
+              期限あり
+            </button>
+            <button
+              aria-label="重要"
+              aria-pressed={important}
+              data-tip="重要なタスクだけ表示"
+              onClick={() => setImportant(!important)}
+            >
+              <Icon name="star" filled={important} />
+              重要
+            </button>
           </div>
           {search && (
             <input
@@ -675,35 +808,7 @@ export default function App() {
               onChange={(e) => setQuery(e.target.value)}
             />
           )}
-          {view === "board" && (
-            <div className="quick">
-              <textarea
-                ref={quickRef}
-                aria-label="新しい付箋"
-                placeholder={
-                  category > 0
-                    ? "このカテゴリに追加…"
-                    : "タスクを入力してEnterで追加"
-                }
-                data-tip="Enterで追加、Shift+Enterで改行"
-                value={quick}
-                disabled={adding}
-                onChange={(e) => setQuick(e.target.value)}
-                onKeyDown={(e) => {
-                  if (
-                    e.key === "Enter" &&
-                    !e.altKey &&
-                    !e.shiftKey &&
-                    !e.nativeEvent.isComposing &&
-                    e.keyCode !== 229
-                  ) {
-                    e.preventDefault();
-                    void add();
-                  }
-                }}
-              />
-            </div>
-          )}
+
           {(view === "history" || view === "trash") && (
             <div className="section-head">
               <h2>{view === "history" ? "完了済み" : "ごみ箱"}</h2>
@@ -738,6 +843,11 @@ export default function App() {
                         drag={drag}
                         open={() => void open(t)}
                         complete={() => void state(t, "done")}
+                        toggleImportant={() =>
+                          void api("ToggleImportant", t.id)
+                            .then(reload)
+                            .catch(report)
+                        }
                       />
                     ))}
                   </SortableContext>
@@ -749,15 +859,22 @@ export default function App() {
           {!groups.length && <p className="empty-small">タスクはありません</p>}
         </main>
         {selected && (
-          <TaskDetail
-            key={selected.id}
-            task={selected}
-            categories={data.categories}
-            onClose={() => setSelected(null)}
-            onSaved={() => void reload()}
-            onError={report}
-            handle={handle}
-          />
+          <>
+            <button
+              className="detail-dismiss"
+              aria-label="詳細の外側を閉じる"
+              onClick={() => void navigate(() => {})}
+            />
+            <TaskDetail
+              key={selected.id}
+              task={selected}
+              categories={data.categories}
+              onClose={() => setSelected(null)}
+              onSaved={() => void reload()}
+              onError={report}
+              handle={handle}
+            />
+          </>
         )}
         {panel === "categories" && (
           <CategoryManager
@@ -865,7 +982,9 @@ export default function App() {
                     <button
                       className="series-title"
                       onClick={() =>
-                        void api("OpenTask", n.task_id).catch(report)
+                        void api("OpenFromNotice", n.id, n.task_id).catch(
+                          report,
+                        )
                       }
                     >
                       {n.title}
@@ -933,6 +1052,7 @@ export default function App() {
 export function Notifications() {
   const [data, setData] = useState<Snapshot | null>(null),
     [error, setError] = useState("");
+  useTheme(data?.settings.theme);
   const id = Number(new URLSearchParams(location.search).get("notice") || 0);
   const reload = () =>
     void api<Snapshot>("GetSnapshot")
@@ -963,7 +1083,7 @@ export function Notifications() {
     urgent = data.tasks
       .filter((t) => urgency(t, data.settings))
       .sort((a, b) => a.deadline.localeCompare(b.deadline));
-  const open = () => call("OpenTask", n.task_id);
+  const open = () => call("OpenFromNotice", n.id, n.task_id);
   return (
     <main
       className={
@@ -999,7 +1119,7 @@ export function Notifications() {
             {!data.settings.private ? (
               urgent.map((t) => (
                 <div className="summary-item" key={t.id}>
-                  <button onClick={() => call("OpenTask", t.id)}>
+                  <button onClick={() => call("OpenFromNotice", n.id, t.id)}>
                     {t.title}
                     <small>
                       {t.deadline} · {urgencyLabel[urgency(t, data.settings)]}
@@ -1026,7 +1146,11 @@ export function Notifications() {
         </>
       ) : (
         <>
-          <button className="notice-content" onClick={open}>
+          <button
+            className="notice-content"
+            data-tip="タスクを開いて、この通知を閉じる"
+            onClick={open}
+          >
             <h2>
               {data.settings.private
                 ? "タスクの通知"
@@ -1039,27 +1163,44 @@ export function Notifications() {
           <footer>
             {n.task_id > 0 && (
               <>
-                <button onClick={open}>タスクを開く</button>
-                <button
-                  data-tip="10分後に再通知"
-                  onClick={() => call("Snooze", n.id, 10)}
-                >
-                  10分後
-                </button>
                 <button
                   className="primary"
                   onClick={() => call("SetState", n.task_id, "done")}
                 >
                   完了
                 </button>
+                <button
+                  data-tip="10分後に再通知"
+                  onClick={() => call("Snooze", n.id, 10)}
+                >
+                  10分後
+                </button>
+                <select
+                  aria-label="あとで通知"
+                  value=""
+                  data-tip="選んだ時間後に再通知"
+                  onChange={(e) => {
+                    if (e.target.value) call("Snooze", n.id, +e.target.value);
+                  }}
+                >
+                  <option value="" disabled>
+                    あとで…
+                  </option>
+                  {[
+                    [30, "30分後"],
+                    [60, "1時間後"],
+                    [360, "6時間後"],
+                    [1440, "1日後"],
+                    [2880, "2日後"],
+                    [10080, "1週間後"],
+                  ].map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
               </>
             )}
-            <button
-              data-tip="タスクは完了せず、通知だけを閉じる"
-              onClick={() => call("Acknowledge", n.id)}
-            >
-              閉じる
-            </button>
           </footer>
         </>
       )}

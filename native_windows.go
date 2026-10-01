@@ -5,6 +5,7 @@ package main
 import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"golang.org/x/sys/windows"
+	"time"
 	"unsafe"
 )
 
@@ -15,9 +16,14 @@ var getForegroundWindow = user32.NewProc("GetForegroundWindow")
 var getWindowRect = user32.NewProc("GetWindowRect")
 var messageBeep = user32.NewProc("MessageBeep")
 
-// ExStyle replaces Wails' computed styles. Preserve TOPMOST, TOOLWINDOW and
+func doubleClickDelay() time.Duration {
+	ms, _, _ := user32.NewProc("GetDoubleClickTime").Call()
+	return time.Duration(ms) * time.Millisecond
+}
+
+// ExStyle replaces Wails' computed styles. Preserve TOPMOST, APPWINDOW and
 // CONTROLPARENT, add NOACTIVATE to prevent WebView focus activation too.
-func noticeStyle() int { return 0x08000000 | 0x00000008 | 0x00000080 | 0x00010000 }
+func noticeStyle() int { return 0x08000000 | 0x00000008 | 0x00040000 | 0x00010000 }
 
 // A thread-local CBT hook vetoes activation of these notification windows. Wails Show is
 // still used so WebView2 visibility and Wails window state remain consistent.
@@ -34,10 +40,10 @@ var activationGuard = windows.NewCallback(func(code int, wparam, lparam uintptr)
 		root, _, _ := getAncestor.Call(wparam, 2)
 		// Dynamic windows can request focus while WebView2 is being created,
 		// before the renderer calls Ready and showNotice registers the HWND.
-		// This hook runs only on our UI thread; NOACTIVATE + TOOLWINDOW also
+		// This hook runs only on our UI thread; NOACTIVATE also
 		// identifies a notification throughout that initialisation interval.
 		style, _, _ := user32.NewProc("GetWindowLongPtrW").Call(root, ^uintptr(19))
-		if noticeHandles[wparam] || noticeHandles[root] || style&0x08000080 == 0x08000080 {
+		if noticeHandles[wparam] || noticeHandles[root] || style&0x08000000 != 0 {
 			return 1
 		}
 	}
@@ -69,6 +75,7 @@ func showNotice(w *application.WebviewWindow) {
 	application.InvokeSync(func() {
 		showWindow.Call(noticeHWND, 4)
 		setWindowPos.Call(noticeHWND, ^uintptr(0), 0, 0, 0, 0, 0x0001|0x0002|0x0010|0x0040)
+		flashNotice(noticeHWND, true)
 	})
 }
 func noticeSound() { messageBeep.Call(0x40) }
@@ -96,4 +103,23 @@ func openFile(path string) error {
 }
 func forgetNotice(w *application.WebviewWindow) {
 	application.InvokeSync(func() { delete(noticeHandles, uintptr(w.NativeWindow())) })
+}
+
+// FLASHW_TRAY | FLASHW_TIMERNOFG: attention without activating the window.
+func flashNotice(hwnd uintptr, active bool) {
+	var info struct {
+		Size                  uint32
+		HWND                  uintptr
+		Flags, Count, Timeout uint32
+	}
+	info.Size = uint32(unsafe.Sizeof(info))
+	info.HWND = hwnd
+	if active {
+		info.Flags = 0x2 | 0xc
+	}
+	user32.NewProc("FlashWindowEx").Call(uintptr(unsafe.Pointer(&info)))
+}
+func hideNotice(w *application.WebviewWindow) {
+	application.InvokeSync(func() { flashNotice(uintptr(w.NativeWindow()), false) })
+	w.Hide()
 }
