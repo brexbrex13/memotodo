@@ -1,8 +1,11 @@
 name: Verify and build
 on:
   push:
-    branches: [main, 'feat/**']
+    branches: [main]
   pull_request:
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:

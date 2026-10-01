@@ -255,6 +255,9 @@ func (a *App) SaveImage(dataURL string) (string, error) {
 	if e != nil {
 		return "", e
 	}
+	if len(b) > 20<<20 {
+		return "", errors.New("画像は20MB以内にしてください")
+	}
 	mime := http.DetectContentType(b)
 	ext := map[string]string{"image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif", "image/webp": ".webp"}[mime]
 	if ext == "" {

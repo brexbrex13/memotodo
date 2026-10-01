@@ -44,6 +44,47 @@ func runNativeProbe() bool {
 	}
 	return true
 }
+
+var smokePoint = make(chan [2]float64, 1)
+
+func (a *App) SmokeTarget(x, y float64) {
+	select {
+	case smokePoint <- [2]float64{x, y}:
+	default:
+	}
+}
+func clickAcknowledge(a *App) error {
+	a.notice.ExecJS(`(()=>{const b=document.querySelector('.notifications footer .primary');if(!b)return;const r=b.getBoundingClientRect();fetch('/wails/runtime?object=0&method=0&args='+encodeURIComponent(JSON.stringify({'call-id':'native-click',methodName:'main.App.SmokeTarget',args:[r.x+r.width/2,r.y+r.height/2]})))})()`)
+	var p [2]float64
+	select {
+	case p = <-smokePoint:
+	case <-time.After(5 * time.Second):
+		return fmt.Errorf("notification renderer did not expose acknowledgement button")
+	}
+	h := uintptr(a.notice.NativeWindow())
+	dpi, _, _ := user32.NewProc("GetDpiForWindow").Call(h)
+	point := struct{ X, Y int32 }{int32(p[0] * float64(dpi) / 96), int32(p[1] * float64(dpi) / 96)}
+	user32.NewProc("ClientToScreen").Call(h, uintptr(unsafe.Pointer(&point)))
+	user32.NewProc("SetCursorPos").Call(uintptr(point.X), uintptr(point.Y))
+	user32.NewProc("mouse_event").Call(2, 0, 0, 0, 0)
+	user32.NewProc("mouse_event").Call(4, 0, 0, 0, 0)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		v, e := a.store.Snapshot()
+		if e != nil {
+			return e
+		}
+		pending := false
+		for _, n := range v.Notifications {
+			pending = pending || !n.Acknowledged
+		}
+		if !pending {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return fmt.Errorf("notification acknowledgement did not respond to physical mouse click")
+}
 func startNativeVerification(a *App) {
 	go func() {
 		result := map[string]any{"passed": false}

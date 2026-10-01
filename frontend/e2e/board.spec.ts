@@ -20,6 +20,17 @@ test("sticky note, rich memo, deadline band, completion and reopen", async ({
   await expect(memo.locator("strong")).toHaveText("太字の業務メモ");
   await page.getByLabel("文字色").fill("#cc1122");
   await page.getByLabel("文字色").dispatchEvent("input");
+  await page
+    .locator(".memo input[type=file]")
+    .setInputFiles({
+      name: "example.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZXkAAAAASUVORK5CYII=",
+        "base64",
+      ),
+    });
+  await expect(memo.locator("img")).toBeVisible();
   await page.getByLabel("詳細を閉じる").click();
   await expect(page.getByLabel("期限の確認")).toContainText(
     "業務メモをすばやく貼る",
@@ -27,6 +38,7 @@ test("sticky note, rich memo, deadline band, completion and reopen", async ({
   await page.reload();
   await card.locator(".card-content").click();
   await expect(memo.locator("strong")).toHaveText("太字の業務メモ");
+  await expect(memo.locator("img")).toBeVisible();
   await page.getByRole("button", { name: "完了して外す", exact: true }).click();
   await expect(page.locator("article")).toHaveCount(0);
   await page.getByRole("button", { name: "✓ 完了・見送り" }).click();
