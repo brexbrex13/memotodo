@@ -1,45 +1,9 @@
-# リリース手順（タグ push → Windowsビルド）
+# Windowsビルドの配布
 
-PR を `main` にマージした後、ローカルからタグを push すると
-`.github/workflows/release.yml` が自動的に Windows 向けビルドを行い、
-GitHub にドラフトリリースを作成する。
+Wails v3版のビルドは`.github/workflows/ci.yml`と`release.yml`に定義しています。
 
-## 前提
+通常のPR・mainへの変更で、ロジック・画面・Windowsネイティブ通知を検証し、ActionsにポータブルZIPを添付します。ZIP内のMemoTodo.exeを、書き込み可能なフォルダに展開してください。Windows 10/11とWebView2 Evergreen Runtimeが必要です。
 
-- 対象の PR が `main` にマージ済みであること
+Releaseワークフローを手動実行すると、ActionsにZIPを出力します。`v*`タグでは同じZIPを添付したドラフトReleaseを作り、公開は手動です。NSISインストーラーは使用しません。
 
-## 手順
-
-```bash
-# 1. リモートの最新情報を取得する
-#    → ローカルのファイルはまだ何も変わらない。リモートに何があるかを知るだけ。
-git fetch origin
-
-# 2. 作業ディレクトリを main ブランチに切り替える
-#    → 手元のファイルが main ブランチの状態になる（他ブランチにいた場合はここで移動）。
-git checkout main
-
-# 3. リモート main の最新コミットをローカル main に反映する
-#    → マージされた変更（PRの内容）がここで初めて手元に反映される。
-git pull origin main
-
-# 4. タグを作成する（vMAJOR.MINOR.PATCH 形式。例: v1.2.0）
-#    → 今のコミットに名前を付けるだけの操作。まだリモートには送られていない。
-git tag v1.2.0
-
-# 5. タグを push する
-#    → ここで初めて GitHub にタグが届き、release.yml が起動する。
-#      Windowsビルド → zip・NSISインストーラ作成 → ドラフトリリース作成、まで自動で進む。
-git push origin v1.2.0
-```
-
-## 補足
-
-- タグ名は必ず `v` から始めること（ワークフロー側が `v*` タグと、`v` を除いた
-  バージョン番号を前提にしているため）。
-- 作成されるリリースは**ドラフト**なので、内容を確認してから GitHub 上で手動 Publish する。
-- タグを打ち間違えた場合の削除:
-  - ローカル: `git tag -d v1.2.0`
-  - リモート: `git push origin :refs/tags/v1.2.0`
-  - ただし push 後にワークフローが既に走っている場合、生成済みのビルド自体は
-    タグ削除では取り消せない（ドラフトリリースを手動で削除する）。
+依存関係とWailsコミットは固定しています。保存先はexe横のdataで、旧todo.dbとの移行・互換性はありません。使用手順・バックアップ・復元はルートREADMEを参照してください。

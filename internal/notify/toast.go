@@ -2,10 +2,7 @@
 // git.sr.ht/~jackmordaunt/go-toast は Windows 以外では no-op ビルドになるため、
 // このパッケージも OS 分岐なしでそのまま呼び出せる。
 //
-// メインウィンドウ内のトースト（todo.js側）と役割が異なる：ウィンドウが最小化・
-// 他アプリの裏に隠れている等でアプリ内トーストが目に入らない場合でも、Windows標準の
-// 通知としてユーザーの目に触れるようにするための並行チャネルであり、ウィンドウを
-// 前面化しない（フォーカスを奪わない）。
+// 独立したWails v3通知ウィンドウが主通知で、標準通知は設定で有効にする補助手段。
 package notify
 
 import (
@@ -33,7 +30,7 @@ func Init(iconPath string, onActivated func()) {
 }
 
 // Push はWindows通知（トースト）を表示する。失敗してもアプリの動作は継続する
-// （メインウィンドウ内のトーストが主表示であり、これはあくまで補助的な通知のため）。
+// （独自通知ウィンドウが主表示）。
 func Push(title, body string) {
 	n := toast.Notification{
 		AppID: appID,
