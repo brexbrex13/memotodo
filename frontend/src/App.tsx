@@ -155,6 +155,7 @@ export default function App() {
     [adding, setAdding] = useState(false),
     [selected, setSelected] = useState<Task | null>(null),
     [series, setSeries] = useState<Series | null>(null),
+    [togglingSeries, setTogglingSeries] = useState<number | null>(null),
     [settings, setSettings] = useState(false),
     [panel, setPanel] = useState(""),
     [menu, setMenu] = useState(false),
@@ -794,24 +795,41 @@ export default function App() {
                     >
                       {s.title}
                     </button>
-                    <small>
-                      {s.active ? "稼働中" : "停止中"} · 次回期限 {s.next_due}
-                    </small>
+                    <small>次回期限 {s.next_due}</small>
                     <small>
                       未完了{" "}
                       {pending.filter((t) => t.series_id === s.id).length}件
                     </small>
+                    <div className="series-auto-add">
+                      <span>タスクの自動追加</span>
+                      <button
+                        className="series-switch"
+                        role="switch"
+                        aria-label={`${s.title}の自動追加`}
+                        aria-checked={s.active}
+                        disabled={togglingSeries !== null}
+                        data-tip="OFFで今後の追加を一時停止します。追加済みのタスクは残ります。再開時に停止中の過去分は追加しません。"
+                        onClick={async () => {
+                          setTogglingSeries(s.id);
+                          try {
+                            await api("SaveSeries", {
+                              ...s,
+                              active: !s.active,
+                            });
+                            await reload();
+                          } catch (e) {
+                            report(e);
+                          } finally {
+                            setTogglingSeries(null);
+                          }
+                        }}
+                      >
+                        <span aria-hidden="true" />
+                      </button>
+                      <small>{s.active ? "ON" : "OFF"}</small>
+                    </div>
                     <div className="actions">
                       <button onClick={() => setSeries(s)}>編集</button>
-                      <button
-                        onClick={() =>
-                          void api("SaveSeries", { ...s, active: !s.active })
-                            .then(reload)
-                            .catch(report)
-                        }
-                      >
-                        {s.active ? "停止" : "再開"}
-                      </button>
                       <button
                         className="danger"
                         onClick={() => {

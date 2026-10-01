@@ -94,6 +94,9 @@ test("recurring rules without first date, shared lead and separate task list", a
   await page.getByLabel("タスク名", { exact: true }).fill("毎週の報告");
   await expect(page.getByText("初回期限日", { exact: true })).toHaveCount(0);
   await expect(page.getByText("周期間隔", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("新しい付箋を作る", { exact: true })).toHaveCount(
+    0,
+  );
   await expect(
     page.getByLabel("タスクリストへの追加", { exact: true }),
   ).toHaveValue("7");
@@ -101,6 +104,23 @@ test("recurring rules without first date, shared lead and separate task list", a
   await expect(
     page.getByRole("region", { name: "定期タスク設定" }),
   ).toHaveCount(0);
+  const autoAdd = page.getByRole("switch", { name: "毎週の報告の自動追加" });
+  await expect(autoAdd).toHaveAttribute("aria-checked", "true");
+  await autoAdd.click();
+  await expect(autoAdd).toHaveAttribute("aria-checked", "false");
+  await page
+    .locator(".series-row")
+    .filter({ hasText: "毎週の報告" })
+    .getByRole("button", { name: "編集", exact: true })
+    .click();
+  await page.getByRole("button", { name: "今すぐ保存", exact: true }).click();
+  await expect(autoAdd).toHaveAttribute("aria-checked", "false");
+  await page.reload();
+  await menu(page, "定期設定");
+  await expect(autoAdd).toHaveAttribute("aria-checked", "false");
+  await autoAdd.click();
+  await expect(autoAdd).toHaveAttribute("aria-checked", "true");
+  await page.screenshot({ path: "../docs/screenshots/recurring-list.png" });
   await page.getByLabel("定期設定を閉じる").click();
   await expect(
     page.locator("article").filter({ hasText: "毎週の報告" }),

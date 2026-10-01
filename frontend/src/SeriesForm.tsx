@@ -184,17 +184,6 @@ export function SeriesForm({
                 </label>
               </div>
             )}
-            <label
-              className="check"
-              data-tip="OFFで今後の追加を停止します。残件は残り、再開しても停止中の過去分は追加しません。編集は今後作られるタスクに適用されます。"
-            >
-              <input
-                type="checkbox"
-                checked={v.active}
-                onChange={(e) => patch({ active: e.target.checked })}
-              />
-              新しい付箋を作る
-            </label>
             <label className="check">
               <input
                 type="checkbox"
