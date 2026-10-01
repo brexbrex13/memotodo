@@ -316,6 +316,33 @@ func startNativeVerification(a *App) {
 			finish(fmt.Errorf("failed shortcut change modified persisted settings"))
 			return
 		}
+		// A startup conflict must not block unrelated settings such as theme.
+		if err = a.store.SaveSettings(settings.Settings); err != nil {
+			competitor.Close()
+			finish(err)
+			return
+		}
+		a.settingsMu.Lock()
+		a.shortcutError = "startup conflict"
+		a.settingsMu.Unlock()
+		unrelated := settings.Settings
+		unrelated.Theme = "dark"
+		if err = a.SaveSettings(unrelated); err != nil {
+			competitor.Close()
+			finish(fmt.Errorf("startup shortcut conflict blocked theme setting: %w", err))
+			return
+		}
+		if a.GetShortcutStatus() == "" {
+			competitor.Close()
+			finish(fmt.Errorf("unrelated save cleared shortcut warning"))
+			return
+		}
+		unrelated.QuickShortcut = ""
+		if err = a.SaveSettings(unrelated); err != nil {
+			competitor.Close()
+			finish(err)
+			return
+		}
 		competitor.Close()
 		if err = a.SaveSettings(settings.Settings); err != nil {
 			finish(err)

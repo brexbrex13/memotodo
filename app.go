@@ -63,6 +63,11 @@ func (a *App) Ready(window string) {
 		a.noticeReady.Store(true)
 	}
 	a.start()
+	if window == "board" {
+		if status := a.GetShortcutStatus(); status != "" {
+			a.desktop.Event.Emit("board:error", status)
+		}
+	}
 	a.refreshNotice()
 }
 func (a *App) run() {
@@ -347,19 +352,22 @@ func (a *App) SaveSettings(v board.Settings) error {
 	if e = a.store.ValidateSettings(v); e != nil {
 		return e
 	}
-	if a.shortcut != nil {
+	shortcutChanged := v.QuickShortcut != old.Settings.QuickShortcut
+	if a.shortcut != nil && shortcutChanged {
 		if e = a.shortcut.Change(v.QuickShortcut); e != nil {
 			return e
 		}
 	}
 	e = a.store.SaveSettings(v)
 	if e != nil {
-		if a.shortcut != nil {
+		if a.shortcut != nil && shortcutChanged {
 			a.shortcut.Change(old.Settings.QuickShortcut)
 		}
 		return e
 	}
-	a.shortcutError = ""
+	if shortcutChanged {
+		a.shortcutError = ""
+	}
 	a.changed()
 	return nil
 }
