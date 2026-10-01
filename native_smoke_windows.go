@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"runtime/pprof"
 	"time"
 	"unsafe"
 )
@@ -96,6 +97,15 @@ func startNativeVerification(a *App) {
 			}
 			b, _ := json.MarshalIndent(result, "", "  ")
 			os.WriteFile("native-smoke.json", b, 0644)
+			go func() {
+				time.Sleep(10 * time.Second)
+				f, _ := os.Create("native-shutdown.txt")
+				if f != nil {
+					pprof.Lookup("goroutine").WriteTo(f, 2)
+					f.Close()
+				}
+				os.Exit(2)
+			}()
 			a.FinishClose("quit")
 		}
 		time.Sleep(2 * time.Second)

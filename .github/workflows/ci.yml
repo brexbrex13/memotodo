@@ -58,10 +58,11 @@ jobs:
         run: |
           go build -tags nativesmoke -o build/bin/native-smoke.exe .
           $env:MEMOTODO_DATA_DIR = Join-Path $env:RUNNER_TEMP "memotodo-native-test"
-          $p = Start-Process build/bin/native-smoke.exe -PassThru
+          $p = Start-Process build/bin/native-smoke.exe -PassThru -RedirectStandardOutput native-output.txt -RedirectStandardError native-error.txt
           if (-not $p.WaitForExit(90000)) { $p.Kill(); throw "Native verification timed out" }
           if (-not (Test-Path native-smoke.json)) { throw "Native verification did not produce a result" }
           Get-Content native-smoke.json
+          if ($p.ExitCode -ne 0) { throw "Native process exited with $($p.ExitCode)" }
           $result = Get-Content native-smoke.json -Raw | ConvertFrom-Json
           if (-not $result.passed) { throw $result.error }
       - name: Package portable build
@@ -78,3 +79,6 @@ jobs:
           path: |
             memotodo-windows-amd64.zip
             native-smoke.json
+            native-shutdown.txt
+            native-output.txt
+            native-error.txt

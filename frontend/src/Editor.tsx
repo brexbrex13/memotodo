@@ -34,7 +34,15 @@ export function Editor({
         r.readAsDataURL(blob);
       });
       const src = await api<string>("SaveImage", data);
-      editor?.chain().focus().setImage({ src }).run();
+      if (editor)
+        editor
+          .chain()
+          .focus()
+          .insertContentAt(editor.state.selection.to, {
+            type: "image",
+            attrs: { src },
+          })
+          .run();
     } catch (e) {
       onError(e);
     } finally {
