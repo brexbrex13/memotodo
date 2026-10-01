@@ -209,6 +209,11 @@ func startNativeVerification(a *App) {
 			return
 		}
 		application.InvokeSync(func() { setWindowPos.Call(uintptr(a.notice.NativeWindow()), ^uintptr(0), 0, 0, 0, 0, 0x1|0x2|0x10) })
+		if e := clickAcknowledge(a); e != nil {
+			finish(e)
+			return
+		}
+		result["mouse-acknowledgement"] = true
 		finish(nil)
 	}()
 }

@@ -39,6 +39,17 @@ var activationGuard = windows.NewCallback(func(code int, wparam, lparam uintptr)
 	return result
 })
 
+// Windows may invoke thread hooks while ExitProcess tears down remaining HWNDs.
+// Go callbacks are no longer valid then; remove the hook before Wails shuts down.
+func releaseNoticeNative() {
+	application.InvokeSync(func() {
+		if noticeHook != 0 {
+			user32.NewProc("UnhookWindowsHookEx").Call(noticeHook)
+			noticeHook = 0
+		}
+	})
+}
+
 func showNotice(w *application.WebviewWindow) {
 	application.InvokeSync(func() {
 		noticeHWND = uintptr(w.NativeWindow())

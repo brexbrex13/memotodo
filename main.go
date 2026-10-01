@@ -88,7 +88,11 @@ func main() {
 	os.WriteFile(filepath.Join(dir, "notify_icon.png"), icon, 0644)
 	notify.Init(filepath.Join(dir, "notify_icon.png"), func() { service.openMain(0) })
 	service.desktop.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) { service.start(); startNativeVerification(service) })
-	service.desktop.OnShutdown(func() { service.quitting.Store(true); service.stopOnce.Do(func() { close(service.stop) }) })
+	service.desktop.OnShutdown(func() {
+		service.quitting.Store(true)
+		service.stopOnce.Do(func() { close(service.stop) })
+		releaseNoticeNative()
+	})
 	if e = service.desktop.Run(); e != nil {
 		panic(e)
 	}
