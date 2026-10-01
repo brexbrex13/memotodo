@@ -26,6 +26,13 @@ type Category struct {
 	Name      string `json:"name"`
 	Color     string `json:"color"`
 	SortOrder int    `json:"sort_order"`
+	TextColor string `json:"text_color"`
+	Dormant   bool   `json:"dormant"`
+}
+type ColorPreset struct {
+	Name       string `json:"name"`
+	Background string `json:"background"`
+	Foreground string `json:"foreground"`
 }
 type Series struct {
 	ID          int64  `json:"id"`
@@ -62,18 +69,20 @@ type Notification struct {
 	Acknowledged bool   `json:"acknowledged"`
 }
 type Settings struct {
-	NearDays       int      `json:"near_days"`
-	Workdays       bool     `json:"workdays"`
-	NotifyTimes    []string `json:"notify_times"`
-	NotifyWeekdays []int    `json:"notify_weekdays"`
-	Sound          bool     `json:"sound"`
-	NativeToast    bool     `json:"native_toast"`
-	Private        bool     `json:"private"`
-	PauseUntil     string   `json:"pause_until"`
-	FontSize       int      `json:"font_size"`
-	Compact        bool     `json:"compact"`
-	Collapsed      []int64  `json:"collapsed"`
-	Monitor        string   `json:"monitor"` // active, primary, screen ID
+	SeriesShowDays int           `json:"series_show_days"`
+	CustomColors   []ColorPreset `json:"custom_colors"`
+	NearDays       int           `json:"near_days"`
+	Workdays       bool          `json:"workdays"`
+	NotifyTimes    []string      `json:"notify_times"`
+	NotifyWeekdays []int         `json:"notify_weekdays"`
+	Sound          bool          `json:"sound"`
+	NativeToast    bool          `json:"native_toast"`
+	Private        bool          `json:"private"`
+	PauseUntil     string        `json:"pause_until"`
+	FontSize       int           `json:"font_size"`
+	Compact        bool          `json:"compact"`
+	Collapsed      []int64       `json:"collapsed"`
+	Monitor        string        `json:"monitor"` // active, primary, screen ID
 }
 type Snapshot struct {
 	Tasks         []Task         `json:"tasks"`
@@ -84,7 +93,7 @@ type Snapshot struct {
 }
 
 func Defaults() Settings {
-	return Settings{NearDays: 3, Workdays: true, NotifyTimes: []string{"13:00", "17:00"}, NotifyWeekdays: []int{1, 2, 3, 4, 5}, Sound: true, FontSize: 14, Collapsed: []int64{}, Monitor: "active"}
+	return Settings{SeriesShowDays: 7, CustomColors: []ColorPreset{}, NearDays: 3, Workdays: true, NotifyTimes: []string{"13:00", "17:00"}, NotifyWeekdays: []int{1, 2, 3, 4, 5}, Sound: true, FontSize: 14, Collapsed: []int64{}, Monitor: "active"}
 }
 func ISO(t time.Time) string  { return t.Format("2006-01-02T15:04:05") }
 func Date(t time.Time) string { return t.Format("2006-01-02") }
@@ -118,15 +127,12 @@ func Urgency(t Task, now time.Time, settings Settings) string {
 		return "today"
 	}
 	n := settings.NearDays
-	if t.SeriesID != 0 {
-		n = t.NearDays
-	}
 	days := 0
 	cursor := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	target := Date(due)
 	for Date(cursor) < target && days <= n {
 		cursor = cursor.AddDate(0, 0, 1)
-		if t.SeriesID != 0 || !settings.Workdays || (cursor.Weekday() != time.Saturday && cursor.Weekday() != time.Sunday) {
+		if !settings.Workdays || (cursor.Weekday() != time.Saturday && cursor.Weekday() != time.Sunday) {
 			days++
 		}
 	}

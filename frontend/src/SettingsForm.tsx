@@ -29,7 +29,17 @@ export function SettingsForm({
         <div className="modal-body">
           <div className="formgrid">
             <label>
-              通常の付箋：期限帯で強調する日数
+              定期タスク：タスクリストへの追加（日数）
+              <input
+                type="number"
+                min={0}
+                max={366}
+                value={v.series_show_days ?? 7}
+                onChange={(e) => patch({ series_show_days: +e.target.value })}
+              />
+            </label>
+            <label>
+              期限が近いとする日数
               <input
                 type="number"
                 min={0}
@@ -131,19 +141,16 @@ export function SettingsForm({
                 checked={v.compact}
                 onChange={(e) => patch({ compact: e.target.checked })}
               />
-              付箋をコンパクトに表示
+              一覧をコンパクトに表示
             </label>
           </div>
-          <p className="muted">
-            独自通知ウィンドウは最前面に表示され、確認まで残ります。確認操作は付箋を完了しません。保留中も通知は保存され、保留終了後に表示します。
-          </p>
-          <button onClick={() => void api("TestNotification").catch(onError)}>
-            現在の保存済み設定で通知をテスト
+          <button
+            data-tip="保存済みの設定で通知をテストします"
+            onClick={() => void api("TestNotification").catch(onError)}
+          >
+            通知をテスト
           </button>
           <h3>データとバックアップ</h3>
-          <p className="muted">
-            新しいboard.dbと添付画像を保存します。旧todo.dbの読み込み・移行は行いません。日ごとの自動バックアップは10日分を保持します。
-          </p>
           <div className="actions">
             <button
               onClick={() =>
@@ -199,9 +206,6 @@ export function SettingsForm({
               }}
             />
           </label>
-          <p className="muted">
-            アプリを完全終了した状態でdataフォルダをコピーすると、別のPCでも利用できます。50MBを超えるデータはフォルダ全体のコピーを使用してください。
-          </p>
         </div>
         <footer>
           <button
@@ -226,7 +230,7 @@ export function SettingsForm({
               }
             }}
           >
-            設定を保存
+            今すぐ保存
           </button>
         </footer>
       </section>

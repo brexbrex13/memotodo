@@ -336,3 +336,138 @@ func TestRestoreRoundtripAndTraversalRollback(t *testing.T) {
 		t.Fatal("failed restore modified data")
 	}
 }
+
+func TestRegistrationUsesRuleAndAdditionWindow(t *testing.T) {
+	for _, tc := range []struct {
+		when  string
+		lead  int
+		want  int
+		first string
+	}{{"2026-10-01T12:00", 2, 0, "2026-10-07"}, {"2026-10-05T12:00", 2, 1, "2026-10-07"}, {"2026-10-07T12:00", 0, 1, "2026-10-07"}, {"2026-10-07T12:00", 7, 2, "2026-10-07"}} {
+		t.Run(tc.when+string(rune('A'+tc.lead)), func(t *testing.T) {
+			s := setup(t, tc.when)
+			v := weekly()
+			v.FirstDue = ""
+			v.ShowDays = tc.lead
+			v.NotifyMode = "off"
+			saved, e := s.SaveSeries(v)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if saved.FirstDue != tc.first {
+				t.Fatal(saved)
+			}
+			tick(t, s, tc.when)
+			tick(t, s, tc.when)
+			if len(snap(t, s).Notifications) != 0 {
+				t.Fatal("deadline alone sent a reminder")
+			}
+			if len(snap(t, s).Tasks) != tc.want {
+				t.Fatal(snap(t, s).Tasks)
+			}
+		})
+	}
+}
+func TestSharedAdditionDaysAndNotificationValidation(t *testing.T) {
+	s := setup(t, "2026-10-01T12:00")
+	v := weekly()
+	v.FirstDue = ""
+	v.ShowDays = -1
+	if _, e := s.SaveSeries(v); e != nil {
+		t.Fatal(e)
+	}
+	tick(t, s, "2026-10-01T12:00")
+	if len(snap(t, s).Tasks) != 1 {
+		t.Fatal("shared 7-day addition was ignored")
+	}
+	settings := snap(t, s).Settings
+	settings.SeriesShowDays = 0
+	if e := s.SaveSettings(settings); e == nil {
+		t.Fatal("shared lead allowed reminders before task addition")
+	}
+	v = weekly()
+	v.FirstDue = ""
+	v.ShowDays = 2
+	v.NotifyDays = 3
+	if _, e := s.SaveSeries(v); e == nil {
+		t.Fatal("individual reminder preceded addition")
+	}
+}
+func TestAutomaticMonthRuleAndDateOnlyDeadlines(t *testing.T) {
+	s := setup(t, "2026-02-27T12:00")
+	v := weekly()
+	v.FirstDue = ""
+	v.Period = "monthly"
+	v.MonthDay = 31
+	v.DueTime = "17:00"
+	v.EndDate = "2026-02-28"
+	v.NotifyMode = "off"
+	r, e := s.SaveSeries(v)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if r.FirstDue != "2026-02-28" || r.DueTime != "" || r.EndDate != "" {
+		t.Fatal(r)
+	}
+	tick(t, s, "2026-02-27T12:00")
+	if snap(t, s).Tasks[0].Deadline != "2026-02-28" {
+		t.Fatal(snap(t, s).Tasks)
+	}
+	s.now = func() time.Time { return at("2026-03-01T12:00") }
+	r = snap(t, s).Series[0]
+	r.Period = "weekly"
+	r.Weekdays = []int{3}
+	if _, e = s.SaveSeries(r); e != nil {
+		t.Fatal(e)
+	}
+	tick(t, s, "2026-03-01T12:00")
+	a := snap(t, s)
+	if a.Tasks[0].Deadline != "2026-02-28" || a.Tasks[1].Deadline != "2026-03-04" {
+		t.Fatal(a.Tasks)
+	}
+}
+func TestCategoryDormancyOrderMovementAndWindowSize(t *testing.T) {
+	s := setup(t, "2026-10-01T12:00")
+	a, e := s.SaveCategory(Category{Name: "今期", Color: "#fff0aa", TextColor: "#493b12"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	b, e := s.SaveCategory(Category{Name: "今週", Color: "#dcebd5", TextColor: "#29432e"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	task, e := s.SaveTask(Task{Title: "目標", Status: "pending", CategoryID: a.ID, ReminderAt: "2026-10-01T12:00"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	a.Dormant = true
+	if _, e = s.SaveCategory(a); e != nil {
+		t.Fatal(e)
+	}
+	tick(t, s, "2026-10-01T12:00")
+	if len(snap(t, s).Notifications) != 1 {
+		t.Fatal("dormancy suppressed notification")
+	}
+	if e = s.ReorderCategories([]int64{b.ID, a.ID}); e != nil {
+		t.Fatal(e)
+	}
+	if snap(t, s).Categories[0].SortOrder != 1 {
+		t.Fatal(snap(t, s).Categories)
+	}
+	if e = s.MoveTask(task.ID, b.ID); e != nil {
+		t.Fatal(e)
+	}
+	if snap(t, s).Tasks[0].CategoryID != b.ID {
+		t.Fatal(snap(t, s).Tasks)
+	}
+	if e = s.SaveWindowSize(1100, 780); e != nil {
+		t.Fatal(e)
+	}
+	w, h := s.WindowSize()
+	if w != 1100 || h != 780 {
+		t.Fatal(w, h)
+	}
+	if e = s.MoveTask(task.ID, 9999); e == nil {
+		t.Fatal("invalid category accepted")
+	}
+}

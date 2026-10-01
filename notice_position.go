@@ -2,7 +2,7 @@ package main
 
 import "github.com/wailsapp/wails/v3/pkg/application"
 
-func positionNotice(app *application.App, w *application.WebviewWindow, monitor string) {
+func noticeScreen(app *application.App, monitor string) *application.Screen {
 	s := app.Screen.GetPrimary()
 	if monitor == "active" {
 		s = activeScreen(app)
@@ -11,11 +11,15 @@ func positionNotice(app *application.App, w *application.WebviewWindow, monitor 
 			s = chosen
 		}
 	}
+	return s
+}
+func positionNotice(app *application.App, w *application.WebviewWindow, monitor string) {
+	s := noticeScreen(app, monitor)
 	if s == nil {
 		return
 	}
 	r := s.WorkArea
-	width, height := 440, 530
+	width, height := 360, 170
 	if r.Width-24 < width {
 		width = r.Width - 24
 	}

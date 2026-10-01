@@ -1,24 +1,33 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "./api";
-import { Category, Series } from "./types";
+import { Category, Series, date } from "./types";
 import { Editor } from "./Editor";
 export function SeriesForm({
   initial,
   categories,
+  defaultShowDays,
   onClose,
   onSaved,
   onError,
 }: {
   initial: Series;
   categories: Category[];
+  defaultShowDays: number;
   onClose: () => void;
   onSaved: () => void;
   onError: (e: unknown) => void;
 }) {
-  const [v, setV] = useState(initial),
+  const [v, setV] = useState({
+      ...initial,
+      due_time: "",
+      end_date: "",
+      notify_mode:
+        initial.notify_mode === "hours" ? "days" : initial.notify_mode,
+    }),
     [busy, setBusy] = useState(false),
     [uploading, setUploading] = useState(false);
   const patch = (p: Partial<Series>) => setV((x) => ({ ...x, ...p }));
+  const lead = v.show_days < 0 ? defaultShowDays : v.show_days;
   const save = async () => {
     setBusy(true);
     try {
@@ -31,181 +40,205 @@ export function SeriesForm({
       setBusy(false);
     }
   };
+  const [preview, setPreview] = useState<{
+    deadline: string;
+    add_at: string;
+    reminder_at: string;
+  } | null>(null);
+  useEffect(() => {
+    let current = true;
+    const timer = setTimeout(() => {
+      void api<{ deadline: string; add_at: string; reminder_at: string }>(
+        "PreviewSeries",
+        v,
+      )
+        .then((p) => {
+          if (current) setPreview(p);
+        })
+        .catch(() => {
+          if (current) setPreview(null);
+        });
+    }, 200);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+  }, [v, defaultShowDays]);
   return (
     <div className="overlay">
-      <section className="modal large">
+      <section className="modal large" aria-label="定期タスク設定">
         <header>
           <h2>{v.id ? "定期設定の編集" : "定期タスクを追加"}</h2>
           <button
             disabled={busy || uploading}
-            onClick={() => {
-              if (
-                JSON.stringify(v) !== JSON.stringify(initial) &&
-                !confirm("保存していない定期設定を破棄しますか？")
-              )
-                return;
-              onClose();
-            }}
+            onClick={onClose}
+            aria-label="定期設定を閉じる"
           >
             ×
           </button>
         </header>
         <div className="modal-body">
-          <label>
-            付箋の内容
-            <textarea
-              value={v.title}
-              onChange={(e) => patch({ title: e.target.value })}
-            />
-          </label>
-          <div className="formgrid">
+          <fieldset className="form-section">
+            <legend>内容</legend>
             <label>
-              貼る場所
+              タスク名
+              <input
+                value={v.title}
+                onChange={(e) => patch({ title: e.target.value })}
+              />
+            </label>
+            <div className="formgrid">
+              <label>
+                カテゴリ
+                <select
+                  value={v.category_id}
+                  onChange={(e) => patch({ category_id: +e.target.value })}
+                >
+                  <option value={0}>未分類</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={v.important}
+                  onChange={(e) => patch({ important: e.target.checked })}
+                />
+                重要
+              </label>
+            </div>
+          </fieldset>
+          <fieldset className="form-section">
+            <legend>期限・繰り返し</legend>
+            <label>
+              繰り返し
               <select
-                value={v.category_id}
-                onChange={(e) => patch({ category_id: +e.target.value })}
+                value={v.period + ":" + v.interval}
+                onChange={(e) => {
+                  const [period, interval] = e.target.value.split(":");
+                  patch({ period, interval: +interval });
+                }}
               >
-                <option value={0}>未分類</option>
-                {categories.map((c) => (
-                  <option value={c.id} key={c.id}>
-                    {c.name}
-                  </option>
-                ))}
+                <option value="daily:1">毎日</option>
+                <option value="weekly:1">毎週</option>
+                <option value="weekly:2">隔週</option>
+                <option value="monthly:1">毎月</option>
+                <option value="monthly:2">2か月ごと</option>
+                <option value="monthly:3">3か月ごと</option>
+                <option value="yearly:1">毎年</option>
               </select>
             </label>
+            {v.period === "weekly" && (
+              <div className="weekdays" role="group" aria-label="期限の曜日">
+                {["日", "月", "火", "水", "木", "金", "土"].map((n, i) => (
+                  <button
+                    key={i}
+                    aria-pressed={v.weekdays.includes(i)}
+                    onClick={() =>
+                      patch({
+                        weekdays: v.weekdays.includes(i)
+                          ? v.weekdays.filter((x) => x !== i)
+                          : [...v.weekdays, i].sort(),
+                      })
+                    }
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            )}
+            {(v.period === "monthly" || v.period === "yearly") && (
+              <div className="formgrid">
+                {v.period === "yearly" && (
+                  <label>
+                    月
+                    <select
+                      value={v.month}
+                      onChange={(e) => patch({ month: +e.target.value })}
+                    >
+                      {Array.from({ length: 12 }, (_, i) => (
+                        <option key={i} value={i + 1}>
+                          {i + 1}月
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <label>
+                  期限日
+                  <select
+                    value={v.month_day}
+                    onChange={(e) => patch({ month_day: +e.target.value })}
+                  >
+                    <option value={0}>月末</option>
+                    {Array.from({ length: 31 }, (_, i) => (
+                      <option key={i} value={i + 1}>
+                        {i + 1}日
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
             <label className="check">
               <input
                 type="checkbox"
-                checked={v.important}
-                onChange={(e) => patch({ important: e.target.checked })}
+                checked={v.show_days === -1}
+                onChange={(e) =>
+                  patch({ show_days: e.target.checked ? -1 : defaultShowDays })
+                }
               />
-              重要
+              共通の追加日数を使う
             </label>
-            <label>
-              周期
-              <select
-                value={v.period}
-                onChange={(e) => patch({ period: e.target.value })}
-              >
-                <option value="daily">日ごと</option>
-                <option value="weekly">週ごと</option>
-                <option value="monthly">月ごと</option>
-                <option value="yearly">年ごと</option>
-              </select>
-            </label>
-            <label>
-              間隔
+            <label
+              className="inline-field"
+              data-tip="期限まで残り0〜指定日数になったら追加します。登録時も同じ判定です。"
+            >
+              タスクリストへの追加
               <input
-                type="number"
-                min={1}
-                max={100}
-                value={v.interval}
-                onChange={(e) => patch({ interval: +e.target.value })}
-              />
-            </label>
-            {v.period === "weekly" && (
-              <fieldset className="wide">
-                <legend>期限の曜日</legend>
-                {["日", "月", "火", "水", "木", "金", "土"].map((n, i) => (
-                  <label className="check" key={i}>
-                    <input
-                      type="checkbox"
-                      checked={v.weekdays.includes(i)}
-                      onChange={(e) =>
-                        patch({
-                          weekdays: e.target.checked
-                            ? [...v.weekdays, i]
-                            : v.weekdays.filter((d) => d !== i),
-                        })
-                      }
-                    />
-                    {n}
-                  </label>
-                ))}
-              </fieldset>
-            )}
-            {(v.period === "monthly" || v.period === "yearly") && (
-              <label>
-                毎回の期限日（0＝月末）
-                <input
-                  type="number"
-                  min={0}
-                  max={31}
-                  value={v.month_day}
-                  onChange={(e) => patch({ month_day: +e.target.value })}
-                />
-              </label>
-            )}
-            {v.period === "yearly" && (
-              <label>
-                月
-                <input
-                  type="number"
-                  min={1}
-                  max={12}
-                  value={v.month}
-                  onChange={(e) => patch({ month: +e.target.value })}
-                />
-              </label>
-            )}
-            <label>
-              初回期限日
-              <input
-                type="date"
-                value={v.first_due}
-                onChange={(e) => patch({ first_due: e.target.value })}
-              />
-            </label>
-            <label>
-              期限時刻（省略で当日末）
-              <input
-                type="time"
-                value={v.due_time}
-                onChange={(e) => patch({ due_time: e.target.value })}
-              />
-            </label>
-            <label>
-              何日前に付箋を作るか
-              <input
+                aria-label="タスクリストへの追加"
                 type="number"
                 min={0}
                 max={366}
-                value={v.show_days}
+                disabled={v.show_days === -1}
+                value={lead}
                 onChange={(e) => patch({ show_days: +e.target.value })}
               />
+              日前
             </label>
-            <label>
-              何日前から期限帯で強調するか
+          </fieldset>
+          <fieldset className="form-section">
+            <legend>通知</legend>
+            <label
+              className="check"
+              data-tip="期限になっただけでは通知しません。この設定で通知する日時を決めます。"
+            >
               <input
-                type="number"
-                min={0}
-                max={366}
-                value={v.near_days}
-                onChange={(e) => patch({ near_days: +e.target.value })}
+                type="checkbox"
+                checked={v.notify_mode !== "off"}
+                onChange={(e) =>
+                  patch({ notify_mode: e.target.checked ? "days" : "off" })
+                }
               />
+              通知する
             </label>
-            <label>
-              通知方法
-              <select
-                value={v.notify_mode}
-                onChange={(e) => patch({ notify_mode: e.target.value })}
-              >
-                <option value="days">期限日の何日前・指定時刻</option>
-                <option value="hours">期限から何時間前</option>
-                <option value="off">通知なし</option>
-              </select>
-            </label>
-            {v.notify_mode === "days" && (
-              <>
-                <label>
-                  何日前
+            {v.notify_mode !== "off" && (
+              <div className="formgrid">
+                <label className="inline-field">
+                  期限の
                   <input
+                    aria-label="通知する日数"
                     type="number"
                     min={0}
                     max={366}
                     value={v.notify_days}
                     onChange={(e) => patch({ notify_days: +e.target.value })}
                   />
+                  日前
                 </label>
                 <label>
                   通知時刻
@@ -215,60 +248,47 @@ export function SeriesForm({
                     onChange={(e) => patch({ notify_time: e.target.value })}
                   />
                 </label>
-              </>
+              </div>
             )}
-            {v.notify_mode === "hours" && (
-              <label>
-                何時間前
-                <input
-                  type="number"
-                  min={0}
-                  max={8784}
-                  value={v.notify_hours}
-                  onChange={(e) => patch({ notify_hours: +e.target.value })}
-                />
-              </label>
+            {v.notify_mode !== "off" && v.notify_days > lead && (
+              <p className="danger" role="alert">
+                タスクの追加を通知より前に設定してください。
+              </p>
             )}
-            <label>
-              終了日（任意）
-              <input
-                type="date"
-                value={v.end_date}
-                onChange={(e) => patch({ end_date: e.target.value })}
-              />
-            </label>
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={v.active}
-                onChange={(e) => patch({ active: e.target.checked })}
-              />
-              新しい付箋を作る
-            </label>
-          </div>
-          <p className="muted">
-            期限は「その日までに実施」。通知日数は暦日です。通知より前に付箋が作られるよう、作成日数を設定してください。未完了分は残り、次の周期も追加されます。
-          </p>
-          {v.id > 0 && (
-            <p className="muted">
-              編集は今後作られる付箋に適用します。既存の付箋は変更しません。一時停止中の周期は再開時に追加しません。
+          </fieldset>
+          <details>
+            <summary>メモ</summary>
+            <Editor
+              value={v.memo}
+              onChange={(memo) => patch({ memo })}
+              onError={onError}
+              onBusy={setUploading}
+            />
+          </details>
+          {preview && (
+            <p
+              className="schedule-preview"
+              data-tip="編集は作成済みのタスクには反映しません。再開時も過去分を補充しません。"
+            >
+              追加 {preview.add_at <= date() ? "保存時" : preview.add_at} · 期限{" "}
+              {preview.deadline}
+              {preview.reminder_at &&
+                " · 通知 " + preview.reminder_at.replace("T", " ").slice(0, 16)}
             </p>
           )}
-          <h3>毎回の業務メモ</h3>
-          <Editor
-            value={v.memo}
-            onChange={(memo) => patch({ memo })}
-            onError={onError}
-            onBusy={setUploading}
-          />
         </div>
         <footer>
           <button
-            disabled={busy || uploading}
             className="primary"
+            disabled={
+              busy ||
+              uploading ||
+              !v.title.trim() ||
+              (v.notify_mode !== "off" && v.notify_days > lead)
+            }
             onClick={() => void save()}
           >
-            {busy ? "保存中…" : "定期設定を保存"}
+            {busy ? "保存中…" : "今すぐ保存"}
           </button>
         </footer>
       </section>

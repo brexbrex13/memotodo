@@ -8,7 +8,13 @@ import Link from "@tiptap/extension-link";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import DOMPurify from "dompurify";
+import { memoLink } from "./links";
 import { api } from "./api";
+const sanitizeMemo = (html: string) =>
+  DOMPurify.sanitize(html, {
+    ALLOWED_URI_REGEXP:
+      /^(?:(?:https?|file):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+  });
 export function Editor({
   value,
   onChange,
@@ -23,8 +29,18 @@ export function Editor({
   const change = useRef(onChange);
   change.current = onChange;
   const file = useRef<HTMLInputElement>(null);
+  const uploads = useRef(0);
+  const resize = useRef<HTMLDivElement>(null);
+  const [height] = useState(() =>
+    Math.max(
+      140,
+      Math.min(900, Number(localStorage.getItem("memo-height")) || 240),
+    ),
+  );
+
   const [zoom, setZoom] = useState("");
   const upload = async (blob: Blob) => {
+    uploads.current++;
     onBusy?.(true);
     try {
       const data = await new Promise<string>((resolve, reject) => {
@@ -46,7 +62,8 @@ export function Editor({
     } catch (e) {
       onError(e);
     } finally {
-      onBusy?.(false);
+      uploads.current--;
+      onBusy?.(uploads.current > 0);
     }
   };
   const editor = useEditor({
@@ -55,11 +72,16 @@ export function Editor({
       TextStyle,
       Color,
       Image,
-      Link.configure({ openOnClick: false, autolink: true }),
+      Link.configure({
+        openOnClick: false,
+        autolink: true,
+        protocols: ["file"],
+        isAllowedUri: (url) => /^(https?:\/\/|file:\/\/)/i.test(url),
+      }),
       TaskList,
       TaskItem.configure({ nested: true }),
     ],
-    content: DOMPurify.sanitize(value),
+    content: sanitizeMemo(value),
     onUpdate: ({ editor }) => change.current(editor.getHTML()),
     editorProps: {
       handlePaste: (_view, e) => {
@@ -100,10 +122,26 @@ export function Editor({
   });
   useEffect(() => {
     if (editor && value !== editor.getHTML() && !editor.isFocused)
-      editor.commands.setContent(DOMPurify.sanitize(value), {
+      editor.commands.setContent(sanitizeMemo(value), {
         emitUpdate: false,
       });
   }, [value, editor]);
+  useEffect(() => {
+    const el = resize.current;
+    if (!el) return;
+    const persist = () =>
+      localStorage.setItem(
+        "memo-height",
+        String(Math.round(el.getBoundingClientRect().height)),
+      );
+    el.addEventListener("pointerup", persist);
+    const obs = new ResizeObserver(persist);
+    obs.observe(el);
+    return () => {
+      el.removeEventListener("pointerup", persist);
+      obs.disconnect();
+    };
+  }, [editor]);
   if (!editor) return null;
   return (
     <div className="memo">
@@ -123,14 +161,26 @@ export function Editor({
         >
           <i>I</i>
         </button>
-        <input
-          aria-label="文字色"
-          title="文字色"
-          type="color"
-          onInput={(e) =>
-            editor.chain().focus().setColor(e.currentTarget.value).run()
-          }
-        />
+        <div className="text-colors" role="group" aria-label="文字色">
+          {[
+            ["標準", "#302d25"],
+            ["赤", "#b32929"],
+            ["青", "#185caa"],
+            ["緑", "#26713e"],
+            ["紫", "#743c91"],
+          ].map(([name, color]) => (
+            <button
+              key={name}
+              type="button"
+              aria-label={"文字色：" + name}
+              data-tip={"文字色：" + name}
+              style={{ color }}
+              onClick={() => editor.chain().focus().setColor(color).run()}
+            >
+              A
+            </button>
+          ))}
+        </div>
         <button
           type="button"
           onClick={() =>
@@ -155,7 +205,7 @@ export function Editor({
           type="button"
           onClick={() => {
             const href = prompt(
-              "リンク先（https://…）",
+              "リンク先（HTTP/HTTPS、ローカル・UNCパス）",
               editor.getAttributes("link").href ?? "",
             );
             if (href === null) return;
@@ -163,22 +213,29 @@ export function Editor({
               editor.chain().focus().unsetLink().run();
               return;
             }
-            if (!/^https?:\/\//i.test(href)) {
-              onError("HTTP/HTTPSリンクを入力してください");
+            let target: string;
+            try {
+              target = memoLink(href);
+            } catch (e) {
+              onError(e);
               return;
             }
             editor
               .chain()
               .focus()
               .extendMarkRange("link")
-              .setLink({ href })
+              .setLink({ href: target })
               .run();
           }}
         >
           リンク
         </button>
-        <button type="button" onClick={() => file.current?.click()}>
-          画像
+        <button
+          type="button"
+          data-tip="画像を本文に挿入します。Ctrl+V・ドロップでも添付できます"
+          onClick={() => file.current?.click()}
+        >
+          画像添付
         </button>
         <button
           type="button"
@@ -206,8 +263,9 @@ export function Editor({
           }}
         />
       </div>
-      <EditorContent editor={editor} />
-      <small>自動保存 · 画像は貼り付け・ドロップでも添付できます</small>
+      <div className="memo-editor" ref={resize} style={{ height }}>
+        <EditorContent editor={editor} />
+      </div>
       {zoom && (
         <div className="lightbox" onClick={() => setZoom("")}>
           <button>閉じる</button>

@@ -136,98 +136,73 @@ export function TaskDetail({
     }
   };
   return (
-    <aside className="detail" aria-label="付箋の詳細">
+    <aside className="detail" aria-label="タスクの詳細">
       <header>
-        <h2>{task.series_id ? "定期タスクの付箋" : "付箋の詳細"}</h2>
+        <h2>{task.series_id ? "定期タスク" : "タスクの詳細"}</h2>
         <button onClick={() => void leave()} aria-label="詳細を閉じる">
           ×
         </button>
       </header>
       <div className="detail-body">
-        <textarea
-          aria-label="付箋の内容"
-          className="detail-title"
-          value={draft.title}
-          onChange={(e) => change({ title: e.target.value })}
-        />
-        <div className="formgrid">
-          <label>
-            貼る場所
-            <select
-              value={draft.category_id}
-              onChange={(e) => change({ category_id: +e.target.value })}
-            >
-              <option value={0}>未分類</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={draft.important}
-              onChange={(e) => change({ important: e.target.checked })}
-            />
-            重要
-          </label>
-          <label>
-            期限日
-            <input
-              type="date"
-              value={draft.deadline.slice(0, 10)}
-              onChange={(e) =>
-                change({
-                  deadline: e.target.value
-                    ? e.target.value +
-                      (draft.deadline.includes("T")
-                        ? "T" + draft.deadline.slice(11)
-                        : "")
-                    : "",
-                })
-              }
-            />
-          </label>
-          <label>
-            期限時刻（省略で当日末）
-            <input
-              type="time"
-              disabled={!draft.deadline}
-              value={
-                draft.deadline.includes("T") ? draft.deadline.slice(11, 16) : ""
-              }
-              onChange={(e) =>
-                change({
-                  deadline:
-                    draft.deadline.slice(0, 10) +
-                    (e.target.value ? "T" + e.target.value : ""),
-                })
-              }
-            />
-          </label>
-          <label className="wide">
-            通知時刻（期限とは独立）
-            <input
-              type="datetime-local"
-              value={draft.reminder_at.slice(0, 16)}
-              onChange={(e) => change({ reminder_at: e.target.value })}
-            />
-          </label>
-        </div>
-        {draft.notified_at && (
-          <p className="muted">
-            設定した時刻の通知は発行済みです。再通知する場合は新しい時刻を設定してください。
-          </p>
-        )}
-        {task.series_id > 0 && (
-          <p className="muted">
-            {task.occurrence}
-            分。この付箋の編集は、定期設定や別の周期には影響しません。
-          </p>
-        )}
-        <h3>業務メモ</h3>
+        <fieldset className="form-section">
+          <legend>内容</legend>
+          <textarea
+            aria-label="タスク名"
+            className="detail-title"
+            value={draft.title}
+            onChange={(e) => change({ title: e.target.value })}
+          />
+          <div className="formgrid">
+            <label>
+              カテゴリ
+              <select
+                value={draft.category_id}
+                onChange={(e) => change({ category_id: +e.target.value })}
+              >
+                <option value={0}>未分類</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={draft.important}
+                onChange={(e) => change({ important: e.target.checked })}
+              />
+              重要
+            </label>
+          </div>
+        </fieldset>
+        <fieldset className="form-section">
+          <legend>期限・通知</legend>
+          <div className="formgrid">
+            <label>
+              期限日
+              <input
+                type="date"
+                value={draft.deadline.slice(0, 10)}
+                onChange={(e) =>
+                  change({
+                    deadline: e.target.value,
+                  })
+                }
+              />
+            </label>
+            <label data-tip="期限とは独立した通知時刻です。期限到達だけでは通知しません。">
+              通知時刻
+              <input
+                type="datetime-local"
+                value={draft.reminder_at.slice(0, 16)}
+                onChange={(e) => change({ reminder_at: e.target.value })}
+              />
+            </label>
+          </div>
+        </fieldset>
+        <div className="memo-label">メモ</div>
         <Editor
           value={draft.memo}
           onChange={(memo) => change({ memo })}
@@ -243,7 +218,7 @@ export function TaskDetail({
         >
           {status}
         </p>
-        <button onClick={() => void flush().catch(onError)}>今すぐ保存</button>
+
         <div className="detail-actions">
           {draft.deleted_at ? (
             <button disabled={busy} onClick={() => void state("restore")}>
@@ -256,7 +231,7 @@ export function TaskDetail({
                 disabled={busy}
                 onClick={() => void state("done")}
               >
-                完了して外す
+                完了
               </button>
               {task.series_id > 0 && (
                 <button disabled={busy} onClick={() => void state("skipped")}>
@@ -276,11 +251,19 @@ export function TaskDetail({
               <button disabled={busy} onClick={() => void state("pending")}>
                 再開する
               </button>
-              <small>再開時に古い通知時刻は解除されます</small>
             </>
           )}
         </div>
       </div>
+      <footer>
+        <button
+          className="primary"
+          disabled={busy}
+          onClick={() => void leave()}
+        >
+          今すぐ保存
+        </button>
+      </footer>
     </aside>
   );
 }

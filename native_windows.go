@@ -19,11 +19,12 @@ var messageBeep = user32.NewProc("MessageBeep")
 // CONTROLPARENT, add NOACTIVATE to prevent WebView focus activation too.
 func noticeStyle() int { return 0x08000000 | 0x00000008 | 0x00000080 | 0x00010000 }
 
-// A thread-local CBT hook vetoes activation of this one window. Wails Show is
+// A thread-local CBT hook vetoes activation of these notification windows. Wails Show is
 // still used so WebView2 visibility and Wails window state remain consistent.
 // The hook also covers late WebView2 focus requests after navigation completes.
 var noticeHook uintptr
 var noticeHWND uintptr
+var noticeHandles = map[uintptr]bool{}
 var setHook = user32.NewProc("SetWindowsHookExW")
 var nextHook = user32.NewProc("CallNextHookEx")
 var getThread = user32.NewProc("GetWindowThreadProcessId")
@@ -31,7 +32,12 @@ var getAncestor = user32.NewProc("GetAncestor")
 var activationGuard = windows.NewCallback(func(code int, wparam, lparam uintptr) uintptr {
 	if code == 5 {
 		root, _, _ := getAncestor.Call(wparam, 2)
-		if wparam == noticeHWND || root == noticeHWND {
+		// Dynamic windows can request focus while WebView2 is being created,
+		// before the renderer calls Ready and showNotice registers the HWND.
+		// This hook runs only on our UI thread; NOACTIVATE + TOOLWINDOW also
+		// identifies a notification throughout that initialisation interval.
+		style, _, _ := user32.NewProc("GetWindowLongPtrW").Call(root, ^uintptr(19))
+		if noticeHandles[wparam] || noticeHandles[root] || style&0x08000080 == 0x08000080 {
 			return 1
 		}
 	}
@@ -53,6 +59,7 @@ func releaseNoticeNative() {
 func showNotice(w *application.WebviewWindow) {
 	application.InvokeSync(func() {
 		noticeHWND = uintptr(w.NativeWindow())
+		noticeHandles[noticeHWND] = true
 		if noticeHook == 0 {
 			thread, _, _ := getThread.Call(noticeHWND, 0)
 			noticeHook, _, _ = setHook.Call(5, activationGuard, 0, thread)
@@ -77,4 +84,16 @@ func activeScreen(app *application.App) *application.Screen {
 		}
 	}
 	return app.Screen.GetPrimary()
+}
+
+func openFile(path string) error {
+	verb, _ := windows.UTF16PtrFromString("open")
+	file, e := windows.UTF16PtrFromString(path)
+	if e != nil {
+		return e
+	}
+	return windows.ShellExecute(0, verb, file, nil, nil, 1)
+}
+func forgetNotice(w *application.WebviewWindow) {
+	application.InvokeSync(func() { delete(noticeHandles, uintptr(w.NativeWindow())) })
 }

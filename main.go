@@ -58,8 +58,10 @@ func main() {
 		SingleInstance: &application.SingleInstanceOptions{UniqueID: "memotodo-sticky-board-v3", OnSecondInstanceLaunch: func(application.SecondInstanceData) { service.openMain(0) }},
 	})
 	ico, _ := assets.ReadFile("internal/tray/icon.ico")
-	service.main = service.desktop.Window.NewWithOptions(application.WebviewWindowOptions{Name: "board", Title: "MemoTodo", Width: 1180, Height: 800, MinWidth: 760, MinHeight: 500, URL: "/", BackgroundColour: application.NewRGB(247, 246, 241)})
-	service.notice = service.desktop.Window.NewWithOptions(application.WebviewWindowOptions{Name: "notifications", Title: "MemoTodo 通知", Width: 440, Height: 530, Hidden: true, Frameless: true, AlwaysOnTop: true, DisableResize: true, URL: "/?window=notifications", Windows: application.WindowsWindow{HiddenOnTaskbar: true, ExStyle: noticeStyle()}, BackgroundColour: application.NewRGB(247, 246, 241)})
+	width, height := store.WindowSize()
+	service.main = service.desktop.Window.NewWithOptions(application.WebviewWindowOptions{Name: "board", Title: "MemoTodo", Width: width, Height: height, MinWidth: 640, MinHeight: 420, Frameless: true, MinimiseButtonState: application.ButtonHidden, MaximiseButtonState: application.ButtonHidden, URL: "/", BackgroundColour: application.NewRGB(247, 246, 241)})
+	service.notice = service.desktop.Window.NewWithOptions(application.WebviewWindowOptions{Name: "notifications", Title: "MemoTodo 通知", Width: 360, Height: 170, Hidden: true, Frameless: true, AlwaysOnTop: true, DisableResize: true, URL: "/?window=notifications", Windows: application.WindowsWindow{HiddenOnTaskbar: true, ExStyle: noticeStyle()}, BackgroundColour: application.NewRGB(247, 246, 241)})
+	service.main.RegisterHook(events.Common.WindowMaximise, func(ev *application.WindowEvent) { ev.Cancel() })
 	service.main.RegisterHook(events.Common.WindowClosing, func(ev *application.WindowEvent) {
 		if service.quitting.Load() {
 			return
