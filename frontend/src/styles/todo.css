@@ -1492,12 +1492,21 @@ button {
   gap: 10px;
   padding: 9px 12px;
 }
-.task-detail footer [role="status"] {
-  font-size: 11px;
-  flex: 0 1 auto;
+.detail-heading {
+  flex: 1;
+  min-width: 0;
+}
+.detail-heading [role="status"] {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .task-detail footer > .primary {
-  width: auto;
+  width: 100%;
   flex: 1;
   padding: 7px;
   font-size: 12px;

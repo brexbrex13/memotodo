@@ -139,7 +139,16 @@ export function TaskDetail({
   return (
     <aside className="detail task-detail" aria-label="タスクの詳細">
       <header>
-        <h2>{task.series_id ? "定期タスク" : "タスクの詳細"}</h2>
+        <div className="detail-heading">
+          <h2>{task.series_id ? "定期タスク" : "タスクの詳細"}</h2>
+          <span
+            role="status"
+            className={status.startsWith("保存失敗") ? "danger" : "muted"}
+            data-tip={status.startsWith("保存失敗") ? status : undefined}
+          >
+            {status}
+          </span>
+        </div>
         <div className="detail-tools">
           <button
             aria-label="重要"
@@ -253,12 +262,6 @@ export function TaskDetail({
           )}
       </div>
       <footer>
-        <span
-          role="status"
-          className={status.startsWith("保存失敗") ? "danger" : "muted"}
-        >
-          {status}
-        </span>
         <button
           className="primary"
           disabled={busy}
