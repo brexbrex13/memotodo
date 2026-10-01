@@ -1,6 +1,50 @@
 package board
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
+
+func TestRestorePreservesSummaryCursorAndFreezesInheritedLead(t *testing.T) {
+	s := setup(t, "2026-10-01T13:01")
+	settings := Defaults()
+	settings.NotifyTimes = []string{"13:00"}
+	settings.SeriesShowDays = 9
+	if e := s.SaveSettings(settings); e != nil {
+		t.Fatal(e)
+	}
+	rule, e := s.SaveSeries(weekly())
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.db.Exec("UPDATE series SET data=json_set(data,'$.show_days',-1) WHERE id=?", rule.ID); e != nil {
+		t.Fatal(e)
+	}
+	tick(t, s, "2026-10-01T13:01")
+	path, e := s.Backup()
+	if e != nil {
+		t.Fatal(e)
+	}
+	data, e := os.ReadFile(path)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = s.Restore(data); e != nil {
+		t.Fatal(e)
+	}
+	if snap(t, s).Series[0].ShowDays != 9 {
+		t.Fatal("restored legacy lead not frozen")
+	}
+	var cursor string
+	if e = s.db.QueryRow("SELECT value FROM metadata WHERE key='summary_cursor'").Scan(&cursor); e != nil || cursor != "summary:2026-10-01:13:00" {
+		t.Fatal(cursor, e)
+	}
+	before := len(snap(t, s).Notifications)
+	tick(t, s, "2026-10-01T13:02")
+	if len(snap(t, s).Notifications) != before {
+		t.Fatal("restored summary replayed")
+	}
+}
 
 func TestManualDeadlineDoesNotReplayEmptySummarySlot(t *testing.T) {
 	s := setup(t, "2026-10-01T13:01")

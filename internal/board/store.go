@@ -45,10 +45,7 @@ func Open(dir string) (*Store, error) {
 	}
 	// Freeze old inherited lead times at their current value. Common settings
 	// now only seed new rules, never change an existing rule's behaviour.
-	settings, e := s.settings(db)
-	if e == nil {
-		_, e = db.Exec("UPDATE series SET data=json_set(data,'$.show_days',?,'$.version',COALESCE(json_extract(data,'$.version'),0)+1) WHERE json_extract(data,'$.show_days')=-1", settings.SeriesShowDays)
-	}
+	e = s.freezeInheritedLead(db)
 	if e != nil {
 		db.Close()
 		return nil, e
@@ -56,6 +53,15 @@ func Open(dir string) (*Store, error) {
 	return s, nil
 }
 func (s *Store) Close() error { return s.db.Close() }
+
+func (s *Store) freezeInheritedLead(q queryer) error {
+	settings, e := s.settings(q)
+	if e != nil {
+		return e
+	}
+	_, e = q.Exec("UPDATE series SET data=json_set(data,'$.show_days',?,'$.version',COALESCE(json_extract(data,'$.version'),0)+1) WHERE json_extract(data,'$.show_days')=-1", settings.SeriesShowDays)
+	return e
+}
 
 type queryer interface {
 	Query(string, ...any) (*sql.Rows, error)
