@@ -277,6 +277,12 @@ func (s *Store) SaveCategory(c Category) (Category, error) {
 	if !validColor(c.Color) {
 		return c, errors.New("色が不正です")
 	}
+	if c.TextColor == "" {
+		c.TextColor = "#302d25"
+	}
+	if !validColor(c.TextColor) {
+		return c, errors.New("文字色が不正です")
+	}
 	if c.ID == 0 {
 		r, e := tx.Exec("INSERT INTO categories(data) VALUES('{}')")
 		if e != nil {
@@ -343,8 +349,22 @@ func (s *Store) DeleteCategory(id int64) error {
 func (s *Store) SaveSettings(v Settings) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if v.NearDays < 0 || v.NearDays > 366 || v.FontSize < 12 || v.FontSize > 22 {
+	if v.SeriesShowDays < 0 || v.SeriesShowDays > 366 || v.NearDays < 0 || v.NearDays > 366 || v.FontSize < 12 || v.FontSize > 22 {
 		return errors.New("設定値が範囲外です")
+	}
+	for _, p := range v.CustomColors {
+		if strings.TrimSpace(p.Name) == "" || !validColor(p.Background) || !validColor(p.Foreground) {
+			return errors.New("カスタム配色が不正です")
+		}
+	}
+	all, e := list[Series](s.db, "series")
+	if e != nil {
+		return e
+	}
+	for _, r := range all {
+		if !r.Deleted && r.ShowDays == -1 && r.NotifyMode != "off" && r.NotifyDays > v.SeriesShowDays {
+			return errors.New("定期タスクの追加を通知より前に設定してください")
+		}
 	}
 	for _, t := range v.NotifyTimes {
 		if _, e := time.Parse("15:04", t); e != nil {

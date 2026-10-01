@@ -55,7 +55,7 @@ func (a *App) SmokeTarget(x, y float64) {
 	}
 }
 func clickAcknowledge(a *App) error {
-	a.notice.ExecJS(`(()=>{const b=document.querySelector('.notifications footer .primary');if(!b)return;const r=b.getBoundingClientRect();fetch('/wails/runtime?object=0&method=0&args='+encodeURIComponent(JSON.stringify({'call-id':'native-click',methodName:'main.App.SmokeTarget',args:[r.x+r.width/2,r.y+r.height/2]})))})()`)
+	a.notice.ExecJS(`(()=>{const b=document.querySelector('.notice-window header button[aria-label="通知を閉じる"]');if(!b)return;const r=b.getBoundingClientRect();fetch('/wails/runtime?object=0&method=0&args='+encodeURIComponent(JSON.stringify({'call-id':'native-click',methodName:'main.App.SmokeTarget',args:[r.x+r.width/2,r.y+r.height/2]})))})()`)
 	var p [2]float64
 	select {
 	case p = <-smokePoint:
@@ -182,7 +182,32 @@ func startNativeVerification(a *App) {
 			}
 		}
 		if pending != 2 {
-			finish(fmt.Errorf("expected two grouped persistent notifications, got %d", pending))
+			finish(fmt.Errorf("expected two persistent notifications, got %d", pending))
+			return
+		}
+		time.Sleep(2 * time.Second)
+		a.mu.Lock()
+		secondary := len(a.noticeWindows)
+		var extra *application.WebviewWindow
+		for _, w := range a.noticeWindows {
+			extra = w
+		}
+		a.mu.Unlock()
+		if secondary != 1 || extra == nil {
+			finish(fmt.Errorf("second notification has no independent window"))
+			return
+		}
+		secondVisible, _, _ := user32.NewProc("IsWindowVisible").Call(uintptr(extra.NativeWindow()))
+		active, _, _ = getForegroundWindow.Call()
+		if secondVisible == 0 || active != foreground {
+			finish(fmt.Errorf("second notification was hidden or stole focus"))
+			return
+		}
+		var firstRect, secondRect struct{ Left, Top, Right, Bottom int32 }
+		getWindowRect.Call(uintptr(a.notice.NativeWindow()), uintptr(unsafe.Pointer(&firstRect)))
+		getWindowRect.Call(uintptr(extra.NativeWindow()), uintptr(unsafe.Pointer(&secondRect)))
+		if firstRect.Top < secondRect.Bottom && secondRect.Top < firstRect.Bottom && firstRect.Left < secondRect.Right && secondRect.Left < firstRect.Right {
+			finish(fmt.Errorf("notification windows overlap"))
 			return
 		}
 		result["multiple-notifications"] = true

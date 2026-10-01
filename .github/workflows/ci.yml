@@ -71,6 +71,8 @@ jobs:
           New-Item -ItemType Directory -Path portable | Out-Null
           Copy-Item build/bin/MemoTodo.exe portable/
           Copy-Item README.md portable/
+          Copy-Item LICENSE portable/
+          Copy-Item THIRD_PARTY_NOTICES.txt portable/
           Compress-Archive -Path portable/* -DestinationPath memotodo-windows-amd64.zip
       - uses: actions/upload-artifact@v4
         if: always()

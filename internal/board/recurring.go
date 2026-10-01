@@ -107,7 +107,21 @@ func (s *Store) SaveSeries(v Series) (Series, error) {
 		return v, beginErr
 	}
 	defer tx.Rollback()
-	if e := validateSeries(v); e != nil {
+	settings, e := s.settings(tx)
+	if e != nil {
+		return v, e
+	}
+	if v.FirstDue == "" {
+		v.FirstDue = Date(firstDue(v, s.now()))
+	}
+	// Day-only deadlines; notifications are independently configured.
+	v.DueTime = ""
+	v.EndDate = ""
+	resolved := v
+	if resolved.ShowDays == -1 {
+		resolved.ShowDays = settings.SeriesShowDays
+	}
+	if e := validateSeries(resolved); e != nil {
 		return v, e
 	}
 	if v.CategoryID != 0 {
@@ -137,6 +151,7 @@ func (s *Store) SaveSeries(v Series) (Series, error) {
 		v.Deleted = old.Deleted
 		changed := v.Period != old.Period || v.Interval != old.Interval || v.FirstDue != old.FirstDue || v.MonthDay != old.MonthDay || v.Month != old.Month || !equalDays(v.Weekdays, old.Weekdays)
 		if changed {
+			v.FirstDue = Date(firstDue(v, s.now()))
 			v.NextDue = v.FirstDue
 			for v.NextDue < Date(s.now()) {
 				d, _ := ParseTime(v.NextDue, s.now().Location())
@@ -184,6 +199,10 @@ func syncSeries(q queryer, now time.Time) (bool, error) {
 		return false, e
 	}
 	changed := false
+	settings, e := (&Store{}).settings(q)
+	if e != nil {
+		return false, e
+	}
 	for _, v := range all {
 		if !v.Active || v.Deleted {
 			continue
@@ -192,7 +211,11 @@ func syncSeries(q queryer, now time.Time) (bool, error) {
 		if e != nil {
 			return false, e
 		}
-		limit := Date(now.AddDate(0, 0, v.ShowDays))
+		lead := v.ShowDays
+		if lead == -1 {
+			lead = settings.SeriesShowDays
+		}
+		limit := Date(now.AddDate(0, 0, lead))
 		count := 0
 		for Date(cursor) <= limit && (v.EndDate == "" || Date(cursor) <= v.EndDate) {
 			count++

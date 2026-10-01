@@ -28,6 +28,8 @@ vi.mock("./Editor", () => ({
   ),
 }));
 const defaults = {
+  series_show_days: 7,
+  custom_colors: [],
   near_days: 3,
   workdays: true,
   notify_times: [],
@@ -116,7 +118,7 @@ describe("sticky board and notification semantics", () => {
       },
     ];
     render(<Notifications />);
-    fireEvent.click(await screen.findByRole("button", { name: /^確認$/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /^閉じる$/ }));
     await waitFor(() => expect(api).toHaveBeenCalledWith("Acknowledge", 7));
     expect(api).not.toHaveBeenCalledWith("SetState", 1, "done");
   });

@@ -10,6 +10,12 @@ export default defineConfig({
   use: {
     baseURL: "http://127.0.0.1:18991",
     headless: true,
+    launchOptions: process.env.MEMOTODO_CHROMIUM
+      ? {
+          executablePath: process.env.MEMOTODO_CHROMIUM,
+          args: ["--no-sandbox", "--no-zygote", "--disable-dev-shm-usage"],
+        }
+      : undefined,
     channel: process.env.MEMOTODO_CHROME ? "chrome" : undefined,
     screenshot: "only-on-failure",
     trace: "retain-on-failure",

@@ -22,6 +22,8 @@ export type Category = {
   name: string;
   color: string;
   sort_order: number;
+  text_color?: string;
+  dormant?: boolean;
 };
 export type Series = {
   id: number;
@@ -57,7 +59,14 @@ export type Notice = {
   fired_at: string;
   acknowledged: boolean;
 };
+export type ColorPreset = {
+  name: string;
+  background: string;
+  foreground: string;
+};
 export type Settings = {
+  series_show_days: number;
+  custom_colors: ColorPreset[];
   near_days: number;
   workdays: boolean;
   notify_times: string[];
@@ -112,10 +121,10 @@ export const emptySeries = (): Series => ({
   weekdays: [new Date().getDay()],
   month_day: new Date().getDate(),
   month: new Date().getMonth() + 1,
-  first_due: date(),
+  first_due: "",
   next_due: "",
   due_time: "",
-  show_days: 7,
+  show_days: -1,
   near_days: 3,
   notify_mode: "days",
   notify_days: 1,
@@ -132,13 +141,12 @@ export function urgency(t: Task, s: Settings, now = new Date()): string {
   );
   if (due < now) return "overdue";
   if (date(due) === date(now)) return "today";
-  const n = t.series_id ? t.near_days : s.near_days;
+  const n = s.near_days;
   let days = 0;
   const c = new Date(date(now) + "T00:00");
   while (date(c) < date(due) && days <= n) {
     c.setDate(c.getDate() + 1);
-    if (t.series_id || !s.workdays || (c.getDay() !== 0 && c.getDay() !== 6))
-      days++;
+    if (!s.workdays || (c.getDay() !== 0 && c.getDay() !== 6)) days++;
   }
   return days <= n ? "near" : "";
 }

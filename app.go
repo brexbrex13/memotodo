@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -29,6 +30,9 @@ type App struct {
 	wg            sync.WaitGroup
 	mu            sync.Mutex
 	seen          map[int64]bool
+	noticeWindows map[int64]*application.WebviewWindow
+	noticeLoaded  map[int64]bool
+	noticeShown   map[int64]bool
 	noticeVisible bool
 	noticeReady   atomic.Bool
 	startOnce     sync.Once
@@ -38,6 +42,15 @@ type App struct {
 
 func (a *App) start() { a.startOnce.Do(func() { a.wg.Add(1); go a.run() }) }
 func (a *App) Ready(window string) {
+	if strings.HasPrefix(window, "notifications:") {
+		id, _ := strconv.ParseInt(strings.TrimPrefix(window, "notifications:"), 10, 64)
+		a.mu.Lock()
+		if a.noticeLoaded == nil {
+			a.noticeLoaded = map[int64]bool{}
+		}
+		a.noticeLoaded[id] = true
+		a.mu.Unlock()
+	}
 	if window == "notifications" {
 		a.noticeReady.Store(true)
 	}
@@ -98,8 +111,10 @@ func (a *App) refreshNotice() {
 	}
 	pending := 0
 	fresh := false
+	live := []board.Notification{}
 	for _, n := range v.Notifications {
 		if !n.Acknowledged {
+			live = append(live, n)
 			pending++
 			if !a.seen[n.ID] {
 				fresh = true
@@ -111,17 +126,106 @@ func (a *App) refreshNotice() {
 		p, e := board.ParseTime(v.Settings.PauseUntil, time.Local)
 		paused = e == nil && p.After(time.Now())
 	}
+	if a.noticeWindows == nil {
+		a.noticeWindows = map[int64]*application.WebviewWindow{}
+		a.noticeShown = map[int64]bool{}
+		if a.noticeLoaded == nil {
+			a.noticeLoaded = map[int64]bool{}
+		}
+	}
+	for id, w := range a.noticeWindows {
+		found := false
+		for _, n := range live {
+			if n.ID == id {
+				found = true
+				break
+			}
+		}
+		if !found {
+			w.Hide()
+			forgetNotice(w)
+			w.Close()
+			delete(a.noticeWindows, id)
+			delete(a.noticeLoaded, id)
+			delete(a.noticeShown, id)
+		}
+	}
 	if pending == 0 || paused {
 		if a.noticeVisible {
 			a.notice.Hide()
 			a.noticeVisible = false
 		}
+		for id, w := range a.noticeWindows {
+			w.Hide()
+			a.noticeShown[id] = false
+		}
 		return
 	}
-	if !a.noticeVisible {
-		positionNotice(a.desktop, a.notice, v.Settings.Monitor)
-		showNotice(a.notice)
-		a.noticeVisible = true
+	// Each reminder owns a small window. Place them vertically, then in adjacent
+	// columns. Overflow stays durable and is promoted when a visible item closes.
+	offset, column := 0, 0
+	visibleIDs := map[int64]bool{}
+	screen := noticeScreen(a.desktop, v.Settings.Monitor)
+	if screen == nil {
+		return
+	}
+	for i, n := range live {
+		if i == 0 {
+			if previous := a.noticeWindows[n.ID]; previous != nil {
+				previous.Hide()
+				forgetNotice(previous)
+				previous.Close()
+				delete(a.noticeWindows, n.ID)
+				delete(a.noticeLoaded, n.ID)
+				delete(a.noticeShown, n.ID)
+			}
+		}
+		height, width := 170, 360
+		if n.Kind == "summary" {
+			height, width = 390, 440
+		}
+		if height > screen.WorkArea.Height-24 {
+			height = screen.WorkArea.Height - 24
+		}
+		if width > screen.WorkArea.Width-24 {
+			width = screen.WorkArea.Width - 24
+		}
+		if offset > 0 && offset+height > screen.WorkArea.Height-24 {
+			offset = 0
+			column++
+		}
+		if column > 0 && (column+1)*452 > screen.WorkArea.Width {
+			break
+		}
+		visibleIDs[n.ID] = true
+		var w *application.WebviewWindow
+		if i == 0 {
+			w = a.notice
+		} else {
+			w = a.noticeWindows[n.ID]
+			if w == nil {
+				w = a.desktop.Window.NewWithOptions(application.WebviewWindowOptions{Name: fmt.Sprintf("notice-%d", n.ID), Title: "MemoTodo 通知", Width: width, Height: height, Hidden: true, Frameless: true, AlwaysOnTop: true, DisableResize: true, URL: fmt.Sprintf("/?window=notifications&notice=%d", n.ID), Windows: application.WindowsWindow{HiddenOnTaskbar: true, ExStyle: noticeStyle()}, BackgroundColour: application.NewRGB(255, 250, 240)})
+				a.noticeWindows[n.ID] = w
+			}
+		}
+		w.SetSize(width, height)
+		w.SetPosition(screen.WorkArea.X+screen.WorkArea.Width-width-12-column*452, screen.WorkArea.Y+screen.WorkArea.Height-height-12-offset)
+		if i == 0 {
+			if !a.noticeVisible {
+				showNotice(w)
+				a.noticeVisible = true
+			}
+		} else if a.noticeLoaded[n.ID] && !a.noticeShown[n.ID] {
+			showNotice(w)
+			a.noticeShown[n.ID] = true
+		}
+		offset += height + 10
+	}
+	for id, w := range a.noticeWindows {
+		if !visibleIDs[id] && a.noticeShown[id] {
+			w.Hide()
+			a.noticeShown[id] = false
+		}
 	}
 	if fresh {
 		for _, n := range v.Notifications {
@@ -190,6 +294,9 @@ func (a *App) DeleteCategory(id int64) error {
 	}
 	return e
 }
+func (a *App) PreviewSeries(v board.Series) (board.SeriesPreview, error) {
+	return a.store.PreviewSeries(v)
+}
 func (a *App) SaveSeries(v board.Series) (board.Series, error) {
 	s, e := a.store.SaveSeries(v)
 	if e == nil {
@@ -236,7 +343,35 @@ func (a *App) TestNotification() error {
 	return e
 }
 func (a *App) OpenTask(id int64) { a.openMain(id) }
+func (a *App) OpenFromNotice(notificationID, taskID int64) error {
+	if e := a.store.Acknowledge(notificationID); e != nil {
+		return e
+	}
+	a.openMain(taskID)
+	a.changed()
+	return nil
+}
+func (a *App) OpenNotifications() { a.openMain(0); a.desktop.Event.Emit("board:notices") }
+func (a *App) MoveTask(id, categoryID int64) error {
+	e := a.store.MoveTask(id, categoryID)
+	if e == nil {
+		a.changed()
+	}
+	return e
+}
+func (a *App) ReorderCategories(ids []int64) error {
+	e := a.store.ReorderCategories(ids)
+	if e == nil {
+		a.changed()
+	}
+	return e
+}
+func (a *App) SaveMainWindowSize() error { w, h := a.main.Size(); return a.store.SaveWindowSize(w, h) }
 func (a *App) FinishClose(mode string) {
+	if e := a.SaveMainWindowSize(); e != nil {
+		a.desktop.Event.Emit("board:error", e.Error())
+		return
+	}
 	if mode == "quit" {
 		a.quitting.Store(true)
 		a.stopOnce.Do(func() { close(a.stop) })
@@ -271,10 +406,29 @@ func (a *App) SaveImage(dataURL string) (string, error) {
 }
 func (a *App) OpenURL(target string) error {
 	u, e := url.Parse(target)
-	if e != nil || (u.Scheme != "https" && u.Scheme != "http") {
-		return errors.New("HTTP/HTTPSリンクを指定してください")
+	if e != nil {
+		return e
 	}
-	return a.desktop.Browser.OpenURL(target)
+	if (u.Scheme == "https" || u.Scheme == "http") && u.Host != "" {
+		return a.desktop.Browser.OpenURL(target)
+	}
+	if u.Scheme == "file" {
+		path := u.Path
+		if u.Host != "" && u.Host != "localhost" {
+			path = "//" + u.Host + path
+		}
+		if runtime.GOOS == "windows" {
+			path = strings.ReplaceAll(path, "/", "\\")
+			if len(path) > 3 && path[0] == '\\' && path[2] == ':' {
+				path = path[1:]
+			}
+		}
+		if !filepath.IsAbs(path) {
+			return errors.New("絶対パスを指定してください")
+		}
+		return openFile(path)
+	}
+	return errors.New("HTTP/HTTPSまたはファイルリンクを指定してください")
 }
 func (a *App) OpenDataFolder() error {
 	var cmd *exec.Cmd
