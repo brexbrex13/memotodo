@@ -96,8 +96,8 @@ export function Editor({
       handleKeyDown: (_view, e) => {
         if (
           (e.ctrlKey || e.metaKey) &&
-          e.shiftKey &&
-          /^(Digit[1-9])$/.test(e.code)
+          ((e.shiftKey && /^Digit[7-9]$/.test(e.code)) ||
+            (e.altKey && /^Digit[1-6]$/.test(e.code)))
         ) {
           e.preventDefault();
           return true;

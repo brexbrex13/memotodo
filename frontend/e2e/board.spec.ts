@@ -221,6 +221,9 @@ test("memo links, pasted images and editor height survive save and reopen", asyn
     page.getByRole("button", { name: "チェック", exact: true }),
   ).toHaveCount(0);
   await memo.fill("資料を開く");
+  await memo.press("Control+Alt+2");
+  await memo.press("Control+Shift+8");
+  await expect(memo.locator("h2,ul")).toHaveCount(0);
   await memo.press("Control+a");
   page.once("dialog", (d) => d.accept('"C:\\Work\\資料 #1.pdf"'));
   await page.getByRole("button", { name: "リンク", exact: true }).click();
