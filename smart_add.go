@@ -42,8 +42,20 @@ func (a *App) jevKey() string {
 }
 
 func (a *App) SuggestQuickAdd(title string, generation uint64) (smartadd.Suggestion, error) {
+	if generation != a.quickGeneration.Load() {
+		return smartadd.Suggestion{}, nil
+	}
+	return a.suggest(title, true)
+}
+
+// SuggestTask serves the main window, which has no quick-add generation.
+func (a *App) SuggestTask(title string, askCategory bool) (smartadd.Suggestion, error) {
+	return a.suggest(title, askCategory)
+}
+
+func (a *App) suggest(title string, askCategory bool) (smartadd.Suggestion, error) {
 	var none smartadd.Suggestion
-	if generation != a.quickGeneration.Load() || strings.TrimSpace(title) == "" {
+	if strings.TrimSpace(title) == "" {
 		return none, nil
 	}
 	snap, e := a.store.Snapshot()
@@ -60,7 +72,7 @@ func (a *App) SuggestQuickAdd(title string, generation uint64) (smartadd.Suggest
 	client := a.jevFor(key)
 	limit := smartadd.MaxOpenTasks
 	for attempt := 0; attempt < 2; attempt++ {
-		r := smartadd.Build(snap, title, limit)
+		r := smartadd.Build(snap, title, limit, askCategory)
 		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
 		answers, e := client.Ask(ctx, r.State, r.Questions)
 		cancel()

@@ -66,7 +66,8 @@ var reminderOptions = []jev.Option{
 	{Key: "next-week", Description: "来週の初めに通知する"},
 }
 
-func Build(s board.Snapshot, title string, limit int) Request {
+// askCategory=false leaves category names out of the request entirely.
+func Build(s board.Snapshot, title string, limit int, askCategory bool) Request {
 	title = strings.TrimSpace(title)
 	r := Request{
 		State:      State{Input: title, Categories: []string{}, OpenTasks: []string{}},
@@ -84,7 +85,7 @@ func Build(s board.Snapshot, title string, limit int) Request {
 	var catOptions []jev.Option
 	for _, c := range cats {
 		name := strings.TrimSpace(c.Name)
-		if c.Dormant || name == "" || name == noneCategory || len(catOptions) == maxChoices-1 {
+		if !askCategory || c.Dormant || name == "" || name == noneCategory || len(catOptions) == maxChoices-1 {
 			continue
 		}
 		if _, seen := r.categories[name]; seen {

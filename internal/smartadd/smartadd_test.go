@@ -42,7 +42,7 @@ func criteria(t *testing.T, q jev.Question) []string {
 }
 
 func TestBuildCategoriesSkipDormantBlankAndDuplicateNames(t *testing.T) {
-	r := Build(snap(), " 請求書を経理に ", MaxOpenTasks)
+	r := Build(snap(), " 請求書を経理に ", MaxOpenTasks, true)
 	if fmt.Sprint(r.State.Categories) != "[仕事 家]" || r.State.Input != "請求書を経理に" {
 		t.Fatal(r.State)
 	}
@@ -57,7 +57,7 @@ func TestBuildCategoriesSkipDormantBlankAndDuplicateNames(t *testing.T) {
 func TestBuildOmitsCategoryQuestionWithOneCategory(t *testing.T) {
 	s := snap()
 	s.Categories = s.Categories[:1]
-	if _, ok := Build(s, "x", MaxOpenTasks).Questions["category"]; ok {
+	if _, ok := Build(s, "x", MaxOpenTasks, true).Questions["category"]; ok {
 		t.Fatal("category asked with one category")
 	}
 }
@@ -67,20 +67,20 @@ func TestBuildCapsCategoriesAt254(t *testing.T) {
 	for i := 1; i <= 300; i++ {
 		s.Categories = append(s.Categories, board.Category{ID: int64(i), Name: fmt.Sprintf("c%d", i), SortOrder: i})
 	}
-	if n := len(criteria(t, Build(s, "x", MaxOpenTasks).Questions["category"])); n != 255 {
+	if n := len(criteria(t, Build(s, "x", MaxOpenTasks, true).Questions["category"])); n != 255 {
 		t.Fatal(n)
 	}
 }
 
 func TestBuildOpenTasksNewestFirstAndLimited(t *testing.T) {
-	r := Build(snap(), "別の用事", 1)
+	r := Build(snap(), "別の用事", 1, true)
 	if fmt.Sprint(r.State.OpenTasks) != "[請求書提出]" {
 		t.Fatal(r.State.OpenTasks)
 	}
 	if got := fmt.Sprint(criteria(t, r.Questions["duplicate"])); got != "[t11 none]" {
 		t.Fatal(got)
 	}
-	if fmt.Sprint(Build(snap(), "別の用事", MaxOpenTasks).State.OpenTasks) != "[請求書提出 古い]" {
+	if fmt.Sprint(Build(snap(), "別の用事", MaxOpenTasks, true).State.OpenTasks) != "[請求書提出 古い]" {
 		t.Fatal("order")
 	}
 }
@@ -88,13 +88,13 @@ func TestBuildOpenTasksNewestFirstAndLimited(t *testing.T) {
 func TestBuildOmitsDuplicateQuestionWithoutOpenTasks(t *testing.T) {
 	s := snap()
 	s.Tasks = nil
-	if _, ok := Build(s, "x", MaxOpenTasks).Questions["duplicate"]; ok {
+	if _, ok := Build(s, "x", MaxOpenTasks, true).Questions["duplicate"]; ok {
 		t.Fatal("duplicate asked without tasks")
 	}
 }
 
 func TestExactTitleMatchIsFoundLocallyEvenBeyondLimit(t *testing.T) {
-	r := Build(snap(), " 古い ", 1)
+	r := Build(snap(), " 古い ", 1, true)
 	if _, ok := r.Questions["duplicate"]; ok {
 		t.Fatal("asked although exact match is known")
 	}
@@ -105,7 +105,7 @@ func TestExactTitleMatchIsFoundLocallyEvenBeyondLimit(t *testing.T) {
 }
 
 func TestDecideAppliesThresholdsAndEscapes(t *testing.T) {
-	r := Build(snap(), "請求書を経理に", MaxOpenTasks)
+	r := Build(snap(), "請求書を経理に", MaxOpenTasks, true)
 	s := Decide(r, map[string]jev.Answer{
 		"category":  {Choice: "仕事", Confidence: CategoryMin},
 		"important": {Noul: ImportantMin},
@@ -138,7 +138,7 @@ func TestDecideAppliesThresholdsAndEscapes(t *testing.T) {
 }
 
 func TestDecideIgnoresUnknownChoicesAndOrphanDeadlineReminder(t *testing.T) {
-	r := Build(snap(), "x", MaxOpenTasks)
+	r := Build(snap(), "x", MaxOpenTasks, true)
 	s := Decide(r, map[string]jev.Answer{
 		"category":  {Choice: "存在しない", Confidence: 1},
 		"deadline":  {Choice: "yesterday", Confidence: 1},
@@ -147,5 +147,15 @@ func TestDecideIgnoresUnknownChoicesAndOrphanDeadlineReminder(t *testing.T) {
 	})
 	if s != (Suggestion{}) {
 		t.Fatalf("%+v", s)
+	}
+}
+
+func TestBuildWithoutCategorySendsNoCategories(t *testing.T) {
+	r := Build(snap(), "x", MaxOpenTasks, false)
+	if _, ok := r.Questions["category"]; ok || len(r.State.Categories) != 0 {
+		t.Fatal(r.State.Categories)
+	}
+	if s := Decide(r, map[string]jev.Answer{"category": {Choice: "仕事", Confidence: 1}}); s.CategoryID != 0 {
+		t.Fatal(s.CategoryID)
 	}
 }

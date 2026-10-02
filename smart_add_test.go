@@ -206,3 +206,15 @@ func TestQuickAddHeight(t *testing.T) {
 		}
 	}
 }
+
+func TestSuggestTaskIgnoresQuickAddGeneration(t *testing.T) {
+	a, f := smartApp(t, true, "k")
+	a.quickGeneration.Store(5)
+	s, e := a.SuggestTask("大事な用事", false)
+	if e != nil || !s.Important || len(f.sent) != 1 {
+		t.Fatalf("%+v %v %v", s, e, f.sent)
+	}
+	if s, _ := a.SuggestTask("  ", true); s != (smartadd.Suggestion{}) || len(f.sent) != 1 {
+		t.Fatal("blank title asked")
+	}
+}
