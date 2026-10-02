@@ -90,6 +90,7 @@ type Settings struct {
 	Compact             bool          `json:"compact"`
 	Collapsed           []int64       `json:"collapsed"`
 	Monitor             string        `json:"monitor"` // active, primary, screen ID
+	SmartAdd            bool          `json:"smart_add"`
 }
 type Snapshot struct {
 	Tasks         []Task         `json:"tasks"`

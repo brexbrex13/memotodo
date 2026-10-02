@@ -53,6 +53,9 @@ type App struct {
 	startOnce            sync.Once
 	stopOnce             sync.Once
 	quitting             atomic.Bool
+	jevKeys              keyStore
+	newJev               func(key string) jevAPI
+	jevInvalid           atomic.Bool
 }
 
 func (a *App) start() { a.startOnce.Do(func() { a.wg.Add(1); go a.run() }) }
@@ -455,9 +458,15 @@ func (a *App) showQuickAddMode(cursor bool) {
 	a.desktop.Event.Emit("board:mini-focus", a.quickGeneration.Load())
 }
 func (a *App) SetQuickAddExpanded(expanded bool) {
-	a.SetQuickAddLayout(expanded, false, a.quickGeneration.Load())
+	a.SetQuickAddLayout(expanded, false, 0, a.quickGeneration.Load())
 }
-func (a *App) SetQuickAddLayout(expanded, options bool, generation uint64) {
+func quickAddHeight(options bool, rows int) int {
+	if options {
+		return 430
+	}
+	return 105 + min(max(rows, 0), 3)*26
+}
+func (a *App) SetQuickAddLayout(expanded, options bool, rows int, generation uint64) {
 	application.InvokeSync(func() {
 		if generation != a.quickGeneration.Load() {
 			return
@@ -465,11 +474,8 @@ func (a *App) SetQuickAddLayout(expanded, options bool, generation uint64) {
 		if a.mini == nil {
 			return
 		}
-		height := 105
+		height := quickAddHeight(options, rows)
 		_ = expanded // Suggestions never resize the input window.
-		if options {
-			height = 430
-		}
 		currentWidth, currentHeight := a.mini.Size()
 		if currentWidth == 360 && currentHeight == height {
 			return
