@@ -4,6 +4,33 @@ export function shortcutWarning(value: string): string {
   const ctrl = keys.includes("Ctrl"),
     alt = keys.includes("Alt"),
     shift = keys.includes("Shift");
+  // Microsoft Support: keyboard-shortcuts-in-word / keyboard-shortcuts-in-excel.
+  const office = new Set([
+    "Ctrl+Alt+N",
+    "Ctrl+Alt+P",
+    "Ctrl+Alt+O",
+    "Ctrl+Alt+M",
+    "Ctrl+Alt+F",
+    "Ctrl+Alt+D",
+    "Ctrl+Alt+L",
+    "Ctrl+Alt+I",
+    "Ctrl+Alt+K",
+    "Ctrl+Alt+C",
+    "Ctrl+Alt+V",
+    "Ctrl+Alt+R",
+    "Ctrl+Alt+T",
+    "Ctrl+Alt+Z",
+    "Ctrl+Alt+1",
+    "Ctrl+Alt+2",
+    "Ctrl+Alt+3",
+    "Ctrl+1",
+    "Ctrl+F1",
+    "Alt+F1",
+    "Alt+Shift+F1",
+    "Alt+F11",
+  ]);
+  if (office.has(value))
+    return "Officeの標準操作と重なります。MemoTodoが起動中はOfficeの操作を妨げる場合があります。";
   if (
     ctrl &&
     !alt &&
