@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "./api";
 import { ShortcutField } from "./ShortcutField";
+import { JevKeyField } from "./JevKeyField";
 import { Settings } from "./types";
 export function SettingsForm({
   initial,
@@ -162,6 +163,16 @@ export function SettingsForm({
               value={v.quick_shortcut ?? "Ctrl+Alt+N"}
               onChange={(quick_shortcut) => patch({ quick_shortcut })}
             />
+            <h3 className="wide">スマート追加（Jev）</h3>
+            <label className="check wide">
+              <input
+                type="checkbox"
+                checked={!!v.smart_add}
+                onChange={(e) => patch({ smart_add: e.target.checked })}
+              />
+              クイック追加でカテゴリ・重要・期限・通知を推定し、似たタスクを知らせる
+            </label>
+            <JevKeyField />
             <h3 className="wide">表示</h3>
             <label>
               文字サイズ
