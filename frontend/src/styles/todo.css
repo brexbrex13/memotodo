@@ -1705,3 +1705,6 @@ button {
 .quick-suggestion-window { height:100vh;overflow:auto;background:var(--surface);padding:3px;border:1px solid var(--border); }
 .quick-suggestion-window button {display:block;width:100%;height:34px;line-height:22px;padding:6px 10px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:transparent;border:0;border-radius:4px;}
 .quick-suggestion-window button:hover,.quick-suggestion-window button.active {background:var(--hover);}
+
+/* Main-board suggestions take their own space; they never cover task rows. */
+.quick > .task-suggestions { position: static; margin-top: 4px; max-height: 120px; overflow-y: auto; box-shadow: none; }

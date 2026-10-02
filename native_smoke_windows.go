@@ -124,6 +124,49 @@ func checkRightEdgeResize(a *App) error {
 	return nil
 }
 
+func checkMainSuggestionsRestore(a *App) error {
+	for n := 0; n < 5; n++ {
+		for i := 0; i < 3; i++ {
+			if _, e := a.store.SaveTask(board.Task{Title: fmt.Sprintf("Restore candidate %d", n)}); e != nil {
+				return e
+			}
+		}
+	}
+	a.desktop.Event.Emit("board:changed")
+	a.main.Show()
+	a.main.Focus()
+	time.Sleep(400 * time.Millisecond)
+	a.main.ExecJS(`(()=>{const el=document.querySelector('textarea[aria-label="新しい付箋"]');el?.focus();el?.click()})()`)
+	check := func(want bool) error {
+		until := time.Now().Add(5 * time.Second)
+		for time.Now().Before(until) {
+			a.main.ExecJS(`fetch('/wails/runtime?object=0&method=0&args='+encodeURIComponent(JSON.stringify({'call-id':'native-main-suggestions',methodName:'main.App.SmokeTarget',args:[document.querySelectorAll('.quick .task-suggestions button').length,0]})))`)
+			select {
+			case p := <-smokePoint:
+				if (p[0] > 0) == want {
+					return nil
+				}
+			case <-time.After(time.Until(until)):
+				return fmt.Errorf("main suggestion renderer timed out")
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		return fmt.Errorf("unexpected main suggestions visibility, expected %v", want)
+	}
+	if e := check(true); e != nil {
+		return e
+	}
+	a.main.Hide()
+	time.Sleep(150 * time.Millisecond)
+	application.InvokeSync(func() { a.trayDoubleClick() })
+	time.Sleep(250 * time.Millisecond)
+	a.main.ExecJS(`document.querySelector('textarea[aria-label="新しい付箋"]')?.focus()`)
+	if e := check(false); e != nil {
+		return fmt.Errorf("tray double click reopened main suggestions: %w", e)
+	}
+	return nil
+}
+
 // Exercise the actual owned, non-activating dropdown near the taskbar edge.
 func checkQuickDropdown(a *App, foreground uintptr) error {
 	a.showQuickAtCursor()
@@ -489,6 +532,11 @@ func startNativeVerification(a *App) {
 			finish(fmt.Errorf("tray double click left a delayed quick input"))
 			return
 		}
+		if err := checkMainSuggestionsRestore(a); err != nil {
+			finish(err)
+			return
+		}
+		result["main-suggestions-not-reopened-by-tray-double-click"] = true
 		// Exercise real RegisterHotKey delivery and atomic conflict handling.
 		settings, err := a.store.Snapshot()
 		if err != nil {

@@ -270,6 +270,7 @@ export default function App() {
   const handle = useRef<DraftHandle | null>(null),
     quickRef = useRef<HTMLTextAreaElement>(null),
     addLock = useRef(false),
+    quickPointer = useRef(false),
     searchCompositionEnd = useRef(0);
   const suggest = useSuggestions(
     data?.tasks ?? [],
@@ -327,7 +328,7 @@ export default function App() {
       important: false,
     });
     setQuickOptionsOpen(false);
-    suggest.reset();
+    suggest.blur();
     setView("board");
     setCategory(-1);
     setTodayOnly(false);
@@ -367,6 +368,7 @@ export default function App() {
         setView("board");
         setRecurringOnly(false);
         setTodayOnly(false);
+        suggest.focus();
         requestAnimationFrame(() => quickRef.current?.focus());
       }),
       on("board:open", (id) => {
@@ -401,11 +403,17 @@ export default function App() {
       );
     };
     window.addEventListener("resize", resize);
+    const blur = () => {
+      quickPointer.current = false;
+      suggest.blur();
+    };
+    window.addEventListener("blur", blur);
     return () => {
       off.forEach((f) => f());
       clearInterval(timer);
       clearTimeout(resizeTimer);
       window.removeEventListener("resize", resize);
+      window.removeEventListener("blur", blur);
     };
   }, []);
   useEffect(() => {
@@ -417,6 +425,7 @@ export default function App() {
   }, [data, category]);
   useEffect(() => {
     const click = (e: PointerEvent) => {
+      quickPointer.current = true;
       const target = e.target as Element;
       if (!target.closest('.app-menu,[aria-label="メニュー"]')) setMenu(false);
       if (!target.closest(".deadline-popup,[data-deadline-trigger]"))
@@ -430,6 +439,7 @@ export default function App() {
         setView("board");
         setRecurringOnly(false);
         setTodayOnly(false);
+        suggest.focus();
         requestAnimationFrame(() => quickRef.current?.focus());
       }
       if (e.ctrlKey && e.key === "f") {
@@ -445,10 +455,27 @@ export default function App() {
         else setPanel("");
       }
     };
+    const release = (e: MouseEvent) => {
+      quickPointer.current = false;
+      if (
+        !(e.target as Element).closest(
+          ".quick textarea,.quick .task-suggestions",
+        )
+      )
+        suggest.blur();
+    };
+    const cancelPointer = () => {
+      quickPointer.current = false;
+      suggest.blur();
+    };
     document.addEventListener("pointerdown", click);
+    document.addEventListener("click", release);
+    document.addEventListener("pointercancel", cancelPointer);
     window.addEventListener("keydown", key);
     return () => {
       document.removeEventListener("pointerdown", click);
+      document.removeEventListener("click", release);
+      document.removeEventListener("pointercancel", cancelPointer);
       window.removeEventListener("keydown", key);
     };
   }, [selected]);
@@ -479,7 +506,7 @@ export default function App() {
         reminder_time: "",
         important: false,
       });
-      suggest.reset();
+      suggest.blur();
       setQuickOptionsOpen(false);
       await reload();
     } catch (e) {
@@ -851,11 +878,17 @@ export default function App() {
                 onCompositionStart={suggest.compositionStart}
                 onCompositionUpdate={suggest.compositionUpdate}
                 onCompositionEnd={suggest.compositionEnd}
-                onKeyUp={suggest.keyUp}
-                onFocus={() =>
-                  inputAvailable ? suggest.focus() : suggest.blur()
-                }
-                onBlur={suggest.blur}
+                onKeyUp={(e) => {
+                  suggest.keyUp();
+                  if (e.key === "Tab" && inputAvailable && !quick.trim())
+                    suggest.focus();
+                }}
+                onClick={() => {
+                  if (inputAvailable) suggest.focus();
+                }}
+                onBlur={() => {
+                  if (!quickPointer.current) suggest.blur();
+                }}
                 onChange={(e) => {
                   setQuick(e.target.value);
                   suggest.reset();
