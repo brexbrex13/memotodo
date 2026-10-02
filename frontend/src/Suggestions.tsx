@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Task } from "./types";
 const fold = (v: string) =>
   v
@@ -56,6 +56,7 @@ export function useSuggestions(
   onChoose: (title: string) => void,
   category = -1,
 ) {
+  const listRef = useRef<HTMLDivElement>(null);
   const composing = useRef(false),
     commitEnter = useRef(0);
   const [imeQuery, setImeQuery] = useState<string | null>(null);
@@ -69,6 +70,11 @@ export function useSuggestions(
       : matching.length || imeQuery === null
         ? matching
         : suggestions(tasks, "", minimum, category);
+  useEffect(() => {
+    listRef.current
+      ?.querySelector<HTMLElement>(".active")
+      ?.scrollIntoView?.({ block: "nearest" });
+  }, [index]);
   const choose = (title: string) => {
     onChoose(title);
     setClosed(title);
@@ -111,6 +117,7 @@ export function useSuggestions(
   };
   const list = items.length ? (
     <div
+      ref={listRef}
       className="task-suggestions"
       role="listbox"
       aria-label="タスク名の候補"

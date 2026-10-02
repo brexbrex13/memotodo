@@ -514,3 +514,57 @@ test("mini suggestions remain available with details and preserve input geometry
   await expect(input).toHaveValue("");
   await mini.close();
 });
+
+test("main suggestions require explicit input and never cover the task list after restore", async ({
+  page,
+}) => {
+  await page.goto("/");
+  for (let n = 1; n <= 5; n++)
+    for (let i = 0; i < 3; i++) await create(page, `復帰候補の作業${n}`);
+  await page.reload();
+  const input = page.getByLabel("新しい付箋");
+  await expect(input).toBeVisible();
+  await input.focus();
+  await expect(page.locator(".quick .task-suggestions")).toHaveCount(0);
+  await input.click();
+  const list = page.locator(".quick .task-suggestions");
+  await expect(list).toBeVisible();
+  await expect(list.getByRole("option")).toHaveCount(5);
+  await input.dispatchEvent("pointerdown", { button: 2 });
+  await input.dispatchEvent("pointerup", { button: 2 });
+  await input.press("Shift+Tab");
+  await expect(list).toHaveCount(0);
+  await input.click();
+  await expect(list).toBeVisible();
+  const listBox = await list.boundingBox();
+  const filtersBox = await page.locator(".filters").boundingBox();
+  expect(listBox!.y + listBox!.height).toBeLessThanOrEqual(filtersBox!.y);
+  expect(listBox!.height).toBeLessThanOrEqual(120);
+  for (let i = 0; i < 5; i++) await input.press("ArrowDown");
+  const active = list.locator(".active");
+  const activeBox = await active.boundingBox();
+  const currentListBox = await list.boundingBox();
+  expect(activeBox!.y).toBeGreaterThanOrEqual(currentListBox!.y);
+  expect(activeBox!.y + activeBox!.height).toBeLessThanOrEqual(
+    currentListBox!.y + currentListBox!.height,
+  );
+  await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await input.focus();
+  await expect(list).toHaveCount(0);
+  await input.fill("復帰候補");
+  await expect(list).toBeVisible();
+  await input.press("Tab");
+  await expect(input).toHaveValue(/復帰候補の作業/);
+  await expect(list).toHaveCount(0);
+  await input.press("Enter");
+  await expect(input).toHaveValue("");
+  await expect(input).toBeFocused();
+  await expect(list).toHaveCount(0);
+  await page.setViewportSize({ width: 360, height: 420 });
+  await input.click();
+  await expect(list).toBeVisible();
+  const smallList = await list.boundingBox();
+  const smallFilters = await page.locator(".filters").boundingBox();
+  expect(smallList!.y + smallList!.height).toBeLessThanOrEqual(smallFilters!.y);
+});
