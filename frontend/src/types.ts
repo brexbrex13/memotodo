@@ -86,6 +86,7 @@ export type Settings = {
   compact: boolean;
   collapsed: number[];
   monitor: string;
+  smart_add?: boolean;
 };
 export type Snapshot = {
   tasks: Task[];
