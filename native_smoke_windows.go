@@ -124,6 +124,107 @@ func checkRightEdgeResize(a *App) error {
 	return nil
 }
 
+// Exercise the actual owned, non-activating dropdown near the taskbar edge.
+func checkQuickDropdown(a *App, foreground uintptr) error {
+	a.showQuickAtCursor()
+	time.Sleep(250 * time.Millisecond)
+	h := uintptr(a.mini.NativeWindow())
+	monitor, _, _ := user32.NewProc("MonitorFromWindow").Call(h, 2)
+	var info struct {
+		Size          uint32
+		Monitor, Work struct{ Left, Top, Right, Bottom int32 }
+		Flags         uint32
+	}
+	info.Size = uint32(unsafe.Sizeof(info))
+	if ok, _, _ := user32.NewProc("GetMonitorInfoW").Call(monitor, uintptr(unsafe.Pointer(&info))); ok == 0 {
+		return fmt.Errorf("quick dropdown monitor unavailable")
+	}
+	var before, after struct{ Left, Top, Right, Bottom int32 }
+	getWindowRect.Call(h, uintptr(unsafe.Pointer(&before)))
+	height := before.Bottom - before.Top
+	application.InvokeSync(func() {
+		a.mini.SetBounds(a.desktop.Screen.PhysicalToDipRect(application.Rect{X: int(info.Work.Left + 20), Y: int(info.Work.Bottom - height - 8), Width: int(before.Right - before.Left), Height: int(height)}))
+	})
+	getWindowRect.Call(h, uintptr(unsafe.Pointer(&before)))
+	a.SetQuickSuggestions(QuickSuggestions{Items: []string{"Native suggestion", "Second", "Third", "Fourth", "Fifth"}, Index: 0, Revision: 1000000, Generation: a.quickGeneration.Load(), Anchor: application.Rect{X: 12, Y: 35, Width: 334, Height: 36}})
+	deadline := time.Now().Add(5 * time.Second)
+	visible := uintptr(0)
+	for time.Now().Before(deadline) {
+		visible, _, _ = user32.NewProc("IsWindowVisible").Call(uintptr(a.quickSuggestions.NativeWindow()))
+		if visible != 0 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if visible == 0 {
+		return fmt.Errorf("quick suggestion popup did not appear")
+	}
+	getWindowRect.Call(h, uintptr(unsafe.Pointer(&after)))
+	if before != after {
+		return fmt.Errorf("suggestions resized input: %v -> %v", before, after)
+	}
+	miniDPI, _, _ := user32.NewProc("GetDpiForWindow").Call(h)
+	var popup struct{ Left, Top, Right, Bottom int32 }
+	getWindowRect.Call(uintptr(a.quickSuggestions.NativeWindow()), uintptr(unsafe.Pointer(&popup)))
+	if popup.Left < info.Work.Left || popup.Right > info.Work.Right || popup.Top < info.Work.Top || popup.Bottom > info.Work.Bottom || popup.Bottom > before.Top+int32(float64(35)*float64(miniDPI)/96) {
+		return fmt.Errorf("suggestions did not fit above input and outside taskbar: input=%v popup=%v work=%v", before, popup, info.Work)
+	}
+	active, _, _ := getForegroundWindow.Call()
+	if active != h {
+		return fmt.Errorf("suggestions stole input focus")
+	}
+	a.quickSuggestions.ExecJS(`(()=>{const b=document.querySelector('button');if(!b)return;const r=b.getBoundingClientRect();fetch('/wails/runtime?object=0&method=0&args='+encodeURIComponent(JSON.stringify({'call-id':'native-suggestion-click',methodName:'main.App.SmokeTarget',args:[r.x+r.width/2,r.y+r.height/2]})))})()`)
+	var p [2]float64
+	select {
+	case p = <-smokePoint:
+	case <-time.After(5 * time.Second):
+		return fmt.Errorf("suggestion renderer not ready")
+	}
+	ph := uintptr(a.quickSuggestions.NativeWindow())
+	dpi, _, _ := user32.NewProc("GetDpiForWindow").Call(ph)
+	point := struct{ X, Y int32 }{int32(p[0] * float64(dpi) / 96), int32(p[1] * float64(dpi) / 96)}
+	user32.NewProc("ClientToScreen").Call(ph, uintptr(unsafe.Pointer(&point)))
+	user32.NewProc("SetCursorPos").Call(uintptr(point.X), uintptr(point.Y))
+	user32.NewProc("mouse_event").Call(2, 0, 0, 0, 0)
+	user32.NewProc("mouse_event").Call(4, 0, 0, 0, 0)
+	checkText := func(expected string) error {
+		until := time.Now().Add(5 * time.Second)
+		for time.Now().Before(until) {
+			a.mini.ExecJS(fmt.Sprintf(`(()=>{const v=document.querySelector('input[aria-label="トレイからタスク追加"]')?.value;fetch('/wails/runtime?object=0&method=0&args='+encodeURIComponent(JSON.stringify({'call-id':'native-draft-probe',methodName:'main.App.SmokeTarget',args:[v===%q?1:0,0]})))})()`, expected))
+			select {
+			case value := <-smokePoint:
+				if value[0] == 1 {
+					return nil
+				}
+			case <-time.After(time.Until(until)):
+				return fmt.Errorf("quick input draft probe timed out")
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		return fmt.Errorf("unexpected quick input draft, expected %q", expected)
+	}
+	if e := checkText("Native suggestion"); e != nil {
+		return e
+	}
+	user32.NewProc("SetForegroundWindow").Call(foreground)
+	time.Sleep(300 * time.Millisecond)
+	a.showQuickAtCursor()
+	if e := checkText("Native suggestion"); e != nil {
+		return fmt.Errorf("focus-loss draft: %w", e)
+	}
+	a.mini.ExecJS(`document.querySelector('button[aria-label="入力欄を閉じる"]')?.click()`)
+	if e := checkText(""); e != nil {
+		return fmt.Errorf("cancel did not discard input: %w", e)
+	}
+	time.Sleep(150 * time.Millisecond)
+	a.showQuickAtCursor()
+	if e := checkText(""); e != nil {
+		return fmt.Errorf("explicit cancel draft: %w", e)
+	}
+	a.HideQuickAdd()
+	return nil
+}
+
 func clickAcknowledge(a *App) error {
 	a.notice.ExecJS(`(()=>{const b=document.querySelector('.notice-window header button[aria-label="通知を閉じる"]');if(!b)return;const r=b.getBoundingClientRect();fetch('/wails/runtime?object=0&method=0&args='+encodeURIComponent(JSON.stringify({'call-id':'native-click',methodName:'main.App.SmokeTarget',args:[r.x+r.width/2,r.y+r.height/2]})))})()`)
 	var p [2]float64
@@ -536,6 +637,11 @@ func startNativeVerification(a *App) {
 			return
 		}
 		result["quick-input-blur-hides-without-focus-theft"] = true
+		if err = checkQuickDropdown(a, foreground); err != nil {
+			finish(err)
+			return
+		}
+		result["quick-suggestions-placement-focus-draft-cancel"] = true
 		settings.Settings.QuickShortcut = savedShortcut
 		if err = a.SaveSettings(settings.Settings); err != nil {
 			finish(err)

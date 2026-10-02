@@ -1700,3 +1700,8 @@ button {
 
 .category { margin: 10px 0; padding-top: 6px; }
 .category-caption { position: static; margin: -2px -4px 3px; width: calc(100% + 8px); padding: 3px 7px; background: inherit; font-size: 12px; }
+
+.mini-add .task-suggestions {position:absolute;left:12px;right:12px;top:81px;margin:0;max-height:180px;overflow:auto;}
+.quick-suggestion-window { height:100vh;overflow:auto;background:var(--surface);padding:4px;border:1px solid var(--border); }
+.quick-suggestion-window button {display:block;width:100%;height:34px;line-height:22px;padding:6px 10px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:transparent;border:0;border-radius:4px;}
+.quick-suggestion-window button:hover,.quick-suggestion-window button.active {background:var(--hover);}

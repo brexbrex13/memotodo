@@ -77,10 +77,11 @@ func main() {
 	tray := service.desktop.SystemTray.New()
 	tray.SetIcon(ico)
 	service.mini = service.desktop.Window.NewWithOptions(application.WebviewWindowOptions{Name: "quick-add", Title: "MemoTodo タスク追加", Width: 360, Height: 105, Hidden: true, Frameless: true, AlwaysOnTop: true, DisableResize: true, URL: "/?window=quick-add", Windows: application.WindowsWindow{HiddenOnTaskbar: true}, BackgroundColour: application.NewRGB(247, 246, 241)})
+	service.quickSuggestions = service.desktop.Window.NewWithOptions(application.WebviewWindowOptions{Name: "quick-suggestions", Title: "MemoTodo 入力候補", Width: 336, Height: 178, Hidden: true, Frameless: true, AlwaysOnTop: true, DisableResize: true, URL: "/?window=quick-suggestions", Windows: application.WindowsWindow{HiddenOnTaskbar: true, ExStyle: quickSuggestionStyle()}, BackgroundColour: application.NewRGB(247, 246, 241)})
 	service.mini.RegisterHook(events.Common.WindowClosing, func(ev *application.WindowEvent) {
 		if !service.quitting.Load() {
 			ev.Cancel()
-			service.mini.Hide()
+			service.HideQuickAdd()
 		}
 	})
 	service.mini.OnWindowEvent(events.Windows.WindowInactive, func(*application.WindowEvent) { service.quickLostFocus() })

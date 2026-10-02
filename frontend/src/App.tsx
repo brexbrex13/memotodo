@@ -245,6 +245,27 @@ export default function App() {
     [menu, setMenu] = useState(false),
     [deadline, setDeadline] = useState(""),
     [search, setSearch] = useState(false);
+  const [temporaryCollapsed, setTemporaryCollapsed] = useState<
+    Record<number, boolean>
+  >({});
+  const collapseContext = JSON.stringify([
+    view,
+    category,
+    todayOnly,
+    recurringOnly,
+    important,
+    dated,
+    query,
+  ]);
+  const autoExpand =
+    category >= 0 ||
+    !!query.trim() ||
+    todayOnly ||
+    recurringOnly ||
+    important ||
+    dated ||
+    view !== "board";
+  useEffect(() => setTemporaryCollapsed({}), [collapseContext]);
   useTheme(data?.settings.theme);
   const handle = useRef<DraftHandle | null>(null),
     quickRef = useRef<HTMLTextAreaElement>(null),
@@ -286,8 +307,7 @@ export default function App() {
   const open = async (t: Task) => {
     try {
       await flush();
-      await api("SetCategoryCollapsed", t.category_id, false);
-      void reload();
+
       setPanel("");
       setDeadline("");
       setSelected(null);
@@ -1048,17 +1068,29 @@ export default function App() {
               return (
                 <Group
                   c={c}
-                  collapsed={(data.settings.collapsed || []).includes(c.id)}
-                  count={items.length}
-                  toggle={() =>
-                    void api(
-                      "SetCategoryCollapsed",
-                      c.id,
-                      !(data.settings.collapsed || []).includes(c.id),
-                    )
-                      .then(reload)
-                      .catch(report)
+                  collapsed={
+                    selected?.category_id === c.id
+                      ? false
+                      : (temporaryCollapsed[c.id] ??
+                        (!autoExpand &&
+                          (data.settings.collapsed || []).includes(c.id)))
                   }
+                  count={items.length}
+                  toggle={() => {
+                    const current =
+                      temporaryCollapsed[c.id] ??
+                      (!autoExpand &&
+                        (data.settings.collapsed || []).includes(c.id));
+                    if (autoExpand)
+                      setTemporaryCollapsed((v) => ({
+                        ...v,
+                        [c.id]: !current,
+                      }));
+                    else
+                      void api("SetCategoryCollapsed", c.id, !current)
+                        .then(reload)
+                        .catch(report);
+                  }}
                   key={c.id}
                 >
                   <SortableContext

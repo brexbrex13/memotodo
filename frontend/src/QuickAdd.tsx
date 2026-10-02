@@ -6,36 +6,31 @@ import { ReminderFields } from "./ReminderFields";
 import { Icon } from "./Icons";
 import { useTheme } from "./theme";
 export function QuickAdd() {
-  const [text, setText] = useState(
-    localStorage.getItem("tray-quick-draft") || "",
-  );
+  const blank = () => ({
+    deadline: "",
+    reminder_at: "",
+    reminder_mode: "",
+    reminder_time: "",
+    important: false,
+  });
+  const [text, setText] = useState("");
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
-  const [optionsOpen, setOptionsOpen] = useState(false);
-  const [options, setOptions] = useState(() => {
-    try {
-      return (
-        JSON.parse(localStorage.getItem("tray-quick-options") || "null") || {
-          deadline: "",
-          reminder_at: "",
-          reminder_mode: "",
-          reminder_time: "",
-          important: false,
-        }
-      );
-    } catch {
-      return {
-        deadline: "",
-        reminder_at: "",
-        reminder_mode: "",
-        reminder_time: "",
-        important: false,
-      };
-    }
-  });
+  const [optionsOpen, setOptionsOpen] = useState(false),
+    [options, setOptions] = useState(blank);
+  const [nativeSuggestions, setNativeSuggestions] = useState(true),
+    [showCounter, setShowCounter] = useState(0),
+    [generation, setGeneration] = useState(0);
+  const operation = useRef(0),
+    generationRef = useRef(0);
+  const anchor = useRef<HTMLDivElement>(null),
+    revision = useRef(0),
+    input = useRef<HTMLInputElement>(null),
+    addLock = useRef(false);
   useEffect(() => {
-    localStorage.setItem("tray-quick-options", JSON.stringify(options));
-  }, [options]);
+    localStorage.removeItem("tray-quick-draft");
+    localStorage.removeItem("tray-quick-options");
+  }, []);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const suggest = useSuggestions(
     snapshot?.tasks ?? [],
@@ -44,24 +39,81 @@ export function QuickAdd() {
     setText,
   );
   useEffect(() => {
-    void api("SetQuickAddLayout", suggest.open || !!error, optionsOpen).catch(
-      (e) => setError(String(e)),
+    void api("SetQuickAddLayout", false, optionsOpen, generation).catch((e) =>
+      setError(String(e)),
     );
-  }, [suggest.open, !!error, optionsOpen]);
-  const input = useRef<HTMLInputElement>(null),
-    addLock = useRef(false);
-  useTheme(snapshot?.settings.theme);
+  }, [optionsOpen, generation]);
   useEffect(() => {
-    localStorage.setItem("tray-quick-draft", text);
-  }, [text]);
+    const r = anchor.current?.getBoundingClientRect();
+    if (!r) return;
+    void api<boolean>("SetQuickSuggestions", {
+      items: suggest.items,
+      index: suggest.index,
+      revision: ++revision.current,
+      generation,
+      anchor: {
+        X: Math.round(r.x),
+        Y: Math.round(r.y),
+        Width: Math.round(r.width),
+        Height: Math.round(r.height),
+      },
+    })
+      .then(setNativeSuggestions)
+      .catch((e) => setError(String(e)));
+  }, [
+    JSON.stringify(suggest.items),
+    suggest.index,
+    optionsOpen,
+    showCounter,
+    generation,
+  ]);
+  useTheme(snapshot?.settings.theme);
+  const discard = () => {
+    operation.current++;
+    setText("");
+    setOptions(blank());
+    setOptionsOpen(false);
+    setError("");
+    suggest.blur();
+  };
+  const cancel = () => {
+    discard();
+    void api("HideQuickAdd").catch((e) => setError(String(e)));
+  };
   useEffect(() => {
     const reload = () =>
       void api<Snapshot>("GetSnapshot")
         .then(setSnapshot)
         .catch((e) => setError(String(e)));
-    const focus = () => input.current?.focus();
+    const focus = (value?: unknown) => {
+      if (typeof value === "number") {
+        if (value < generationRef.current) return;
+        generationRef.current = value;
+        setGeneration(value);
+      }
+      input.current?.focus();
+      suggest.focus();
+      setShowCounter((n) => n + 1);
+    };
     reload();
-    const off = [on("board:mini-focus", focus), on("board:changed", reload)];
+    const off = [
+      on("board:mini-focus", focus),
+      on("board:changed", reload),
+      on("board:mini-reset", (value) => {
+        if (typeof value === "number") {
+          if (value < generationRef.current) return;
+          generationRef.current = value;
+          setGeneration(value);
+        }
+        discard();
+      }),
+      on("board:mini-choice", (value) => {
+        const choice = value as { title: string; generation: number };
+        if (choice.generation !== generationRef.current) return;
+        suggest.choose(choice.title);
+        requestAnimationFrame(() => input.current?.focus());
+      }),
+    ];
     const focusWindow = () => {
       if (
         document.activeElement === document.body ||
@@ -69,19 +121,24 @@ export function QuickAdd() {
       )
         focus();
     };
+    const resized = () => setShowCounter((n) => n + 1);
+    window.addEventListener("resize", resized);
     window.addEventListener("focus", focusWindow);
     return () => {
       off.forEach((f) => f());
+      window.removeEventListener("resize", resized);
       window.removeEventListener("focus", focusWindow);
     };
   }, []);
   const add = async () => {
     if (addLock.current || !text.trim()) return;
     addLock.current = true;
+    const token = operation.current;
     setBusy(true);
     setError("");
     try {
       await api("SaveTask", { ...emptyTask(), title: text, ...options });
+      if (token !== operation.current) return;
       setOptions({
         deadline: "",
         reminder_at: "",
@@ -93,27 +150,37 @@ export function QuickAdd() {
       setText("");
       suggest.reset();
     } catch (e) {
-      setError(String(e));
+      if (token === operation.current) setError(String(e));
     } finally {
       setBusy(false);
       addLock.current = false;
       requestAnimationFrame(() => {
-        if (document.hasFocus()) input.current?.focus();
+        if (token === operation.current && document.hasFocus())
+          input.current?.focus();
       });
     }
   };
   return (
-    <main className="mini-add">
+    <main
+      className="mini-add"
+      onKeyDown={(e) => {
+        if (
+          e.key === "Escape" &&
+          !e.nativeEvent.isComposing &&
+          e.keyCode !== 229
+        ) {
+          e.preventDefault();
+          cancel();
+        }
+      }}
+    >
       <header>
         <strong>タスクを追加</strong>
-        <button
-          aria-label="入力欄を閉じる"
-          onClick={() => void api("HideQuickAdd")}
-        >
+        <button aria-label="入力欄を閉じる" onClick={cancel}>
           ×
         </button>
       </header>
-      <div className="mini-input">
+      <div className="mini-input" ref={anchor}>
         <input
           ref={input}
           aria-label="トレイからタスク追加"
@@ -132,7 +199,8 @@ export function QuickAdd() {
           }}
           onKeyDown={(e) => {
             if (busy) return;
-            if (suggest.keyDown(e, !optionsOpen)) return;
+            if (e.key === "Escape") return;
+            if (suggest.keyDown(e)) return;
             if (
               e.key === "Enter" &&
               !e.nativeEvent.isComposing &&
@@ -141,7 +209,6 @@ export function QuickAdd() {
               e.preventDefault();
               void add();
             }
-            if (e.key === "Escape") void api("HideQuickAdd");
           }}
         />
         <button
@@ -153,7 +220,7 @@ export function QuickAdd() {
           <Icon name="clock" />
         </button>
       </div>
-      {!optionsOpen && suggest.list}
+      {!nativeSuggestions && suggest.list}
       {optionsOpen && (
         <div className="mini-options">
           <ReminderFields

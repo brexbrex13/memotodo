@@ -144,13 +144,17 @@ func (a *App) rememberQuickFocus() {
 		a.quickPrevious.Store(foreground)
 	}
 }
-func (a *App) hideQuickNative() {
+func (a *App) hideQuickNative(generation uint64) {
 	application.InvokeSync(func() {
+		if generation != a.quickGeneration.Load() {
+			return
+		}
 		previous := a.quickPrevious.Swap(0)
 		foreground, _, _ := getForegroundWindow.Call()
 		wasQuick := foreground == uintptr(a.mini.NativeWindow())
 		// Hiding an active window can select another window automatically. Return
 		// focus afterwards, on the UI thread; never override a user's app switch.
+		a.hideQuickSuggestions()
 		a.mini.Hide()
 		if !wasQuick || previous == 0 {
 			return
@@ -219,6 +223,7 @@ func (a *App) rememberQuickPosition() {
 			a.quickCursor.Store(true)
 		}
 	})
+	a.refreshQuickSuggestions()
 }
 func (a *App) quickLostFocus() {
 	if a.quitting.Load() {
@@ -235,7 +240,115 @@ func (a *App) quickLostFocus() {
 			if foreground == uintptr(a.mini.NativeWindow()) || root == uintptr(a.mini.NativeWindow()) {
 				return
 			}
+			a.quickGeneration.Add(1)
+			a.hideQuickSuggestions()
 			a.mini.Hide()
 		})
+	})
+}
+
+func quickSuggestionStyle() int       { return 0x08000000 | 0x00000008 | 0x00000080 | 0x00010000 }
+func quickSuggestionsSupported() bool { return true }
+func (a *App) captureQuickPoint() {
+	application.InvokeSync(func() {
+		var p struct{ X, Y int32 }
+		if ok, _, _ := user32.NewProc("GetCursorPos").Call(uintptr(unsafe.Pointer(&p))); ok != 0 {
+			a.quickX, a.quickY = p.X, p.Y
+		}
+	})
+}
+func (a *App) clampQuickToWorkArea() {
+	application.InvokeSync(func() {
+		packed := uintptr(uint64(uint32(a.quickX)) | uint64(uint32(a.quickY))<<32)
+		monitor, _, _ := user32.NewProc("MonitorFromPoint").Call(packed, 2)
+		var info struct {
+			Size          uint32
+			Monitor, Work struct{ Left, Top, Right, Bottom int32 }
+			Flags         uint32
+		}
+		info.Size = uint32(unsafe.Sizeof(info))
+		if ok, _, _ := user32.NewProc("GetMonitorInfoW").Call(monitor, uintptr(unsafe.Pointer(&info))); ok == 0 {
+			return
+		}
+		var r struct{ Left, Top, Right, Bottom int32 }
+		if ok, _, _ := getWindowRect.Call(uintptr(a.mini.NativeWindow()), uintptr(unsafe.Pointer(&r))); ok == 0 {
+			return
+		}
+		width, height := r.Right-r.Left, r.Bottom-r.Top
+		x, y := r.Left, r.Top
+		const margin = 8
+		if x+width > info.Work.Right-margin {
+			x = info.Work.Right - width - margin
+		}
+		if y+height > info.Work.Bottom-margin {
+			y = info.Work.Bottom - height - margin
+		}
+		if x < info.Work.Left+margin {
+			x = info.Work.Left + margin
+		}
+		if y < info.Work.Top+margin {
+			y = info.Work.Top + margin
+		}
+		a.mini.SetBounds(application.PhysicalToDipRect(application.Rect{X: int(x), Y: int(y), Width: int(width), Height: int(height)}))
+	})
+}
+func (a *App) positionQuickSuggestions() {
+	application.InvokeSync(func() {
+		v := a.GetQuickSuggestions()
+		if len(v.Items) == 0 {
+			a.hideQuickSuggestionWindow()
+			return
+		}
+		if a.quitting.Load() || v.Generation != a.quickGeneration.Load() {
+			return
+		}
+		mini := uintptr(a.mini.NativeWindow())
+		visible, _, _ := user32.NewProc("IsWindowVisible").Call(mini)
+		if visible == 0 {
+			a.hideQuickSuggestionWindow()
+			return
+		}
+		monitor, _, _ := user32.NewProc("MonitorFromWindow").Call(mini, 2)
+		var info struct {
+			Size          uint32
+			Monitor, Work struct{ Left, Top, Right, Bottom int32 }
+			Flags         uint32
+		}
+		info.Size = uint32(unsafe.Sizeof(info))
+		if ok, _, _ := user32.NewProc("GetMonitorInfoW").Call(monitor, uintptr(unsafe.Pointer(&info))); ok == 0 {
+			return
+		}
+		dpi, _, _ := user32.NewProc("GetDpiForWindow").Call(mini)
+		scale := float64(dpi) / 96
+		if scale <= 0 {
+			scale = 1
+		}
+		point := struct{ X, Y int32 }{int32(float64(v.Anchor.X) * scale), int32(float64(v.Anchor.Y) * scale)}
+		user32.NewProc("ClientToScreen").Call(mini, uintptr(unsafe.Pointer(&point)))
+		width := int(float64(v.Anchor.Width) * scale)
+		height := int(float64(len(v.Items)*34+8) * scale)
+		gap := int(4 * scale)
+		bottom := int(point.Y) + int(float64(v.Anchor.Height)*scale) + gap
+		above := int(point.Y) - gap - int(info.Work.Top)
+		below := int(info.Work.Bottom) - bottom
+		x, y := int(point.X), bottom
+		if below < height && above > below {
+			height = min(height, above)
+			y = int(point.Y) - gap - height
+		} else {
+			height = min(height, below)
+		}
+		if height < 20 {
+			a.hideQuickSuggestionWindow()
+			return
+		}
+		x = max(int(info.Work.Left), min(x, int(info.Work.Right)-width))
+		popup := uintptr(a.quickSuggestions.NativeWindow())
+		user32.NewProc("SetWindowLongPtrW").Call(popup, ^uintptr(7), mini) // GWL_HWNDPARENT: owned popup.
+		a.quickSuggestions.SetBounds(application.PhysicalToDipRect(application.Rect{X: x, Y: y, Width: width, Height: height}))
+		registerPassiveWindow(a.quickSuggestions)
+		a.quickSuggestions.Show()
+		showWindow.Call(popup, 4)
+		setWindowPos.Call(popup, ^uintptr(0), 0, 0, 0, 0, 0x1|0x2|0x10|0x40)
 	})
 }

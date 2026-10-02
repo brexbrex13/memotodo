@@ -365,6 +365,9 @@ test("category collapse persists and notification opening expands it; closing re
   await expect(
     page.locator("section.category button.category-caption").first(),
   ).toHaveAttribute("aria-expanded", "true");
+  expect((await service(page, "GetSnapshot")).settings.collapsed).toContain(
+    category.id,
+  );
   await page.getByRole("button", { name: "詳細を閉じる", exact: true }).click();
   await page.getByRole("button", { name: "今日やる", exact: true }).click();
   await page.getByRole("button", { name: "重要", exact: true }).click();
@@ -390,6 +393,7 @@ test("category collapse persists and notification opening expands it; closing re
     page.getByRole("button", { name: "重要", exact: true }),
   ).toHaveAttribute("aria-pressed", "false");
   await expect(page.getByLabel("検索を解除")).toHaveCount(0);
+  await service(page, "SetCategoryCollapsed", category.id, false);
 });
 
 test("memo inserts unselected links and recognizes quoted local paths; notification wheel requires focus", async ({
@@ -430,4 +434,83 @@ test("memo inserts unselected links and recognizes quoted local paths; notificat
   await expect(notify).toHaveValue("30m");
   await page.getByRole("button", { name: "詳細を閉じる", exact: true }).click();
   await service(page, "SetState", task.id, "done");
+});
+
+test("category/search/status selection expands temporarily and restores saved collapse", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.getByLabel("新しい付箋")).toBeVisible();
+  const task = await create(page, "一時展開確認", {
+    important: true,
+    deadline: "2099-10-03",
+  });
+  const snap = await service(page, "GetSnapshot");
+  const c = snap.categories.find((c: any) => c.id === task.category_id);
+  await service(page, "SetCategoryCollapsed", c.id, true);
+  const group = page.getByRole("region", { name: c.name, exact: true });
+  const header = group.locator(".category-caption");
+  await expect(header).toHaveAttribute("aria-expanded", "false");
+  await page
+    .locator(".filters")
+    .getByRole("button", { name: c.name, exact: true })
+    .click();
+  await expect(header).toHaveAttribute("aria-expanded", "true");
+  await expect(group.getByText(task.title, { exact: true })).toBeVisible();
+  await header.click();
+  await expect(header).toHaveAttribute("aria-expanded", "false");
+  await page.getByRole("button", { name: "全て", exact: true }).click();
+  await expect(header).toHaveAttribute("aria-expanded", "false");
+  await page.getByRole("button", { name: "検索", exact: true }).click();
+  await page.getByLabel("検索語", { exact: true }).fill(task.title);
+  await expect(group.getByText(task.title, { exact: true })).toBeVisible();
+  await page.getByLabel("検索語を消去").click();
+  await expect(header).toHaveAttribute("aria-expanded", "false");
+  await page.getByLabel("新しい付箋").click();
+  await page.getByRole("button", { name: "重要", exact: true }).click();
+  await expect(header).toHaveAttribute("aria-expanded", "true");
+  await page.getByRole("button", { name: "重要", exact: true }).click();
+  await expect(header).toHaveAttribute("aria-expanded", "false");
+  expect((await service(page, "GetSnapshot")).settings.collapsed).toContain(
+    c.id,
+  );
+  await service(page, "SetCategoryCollapsed", c.id, false);
+});
+
+test("mini suggestions remain available with details and preserve input geometry; explicit close discards", async ({
+  page,
+  context,
+}) => {
+  await page.goto("/");
+  await expect(page.getByLabel("新しい付箋")).toBeVisible();
+  for (let i = 0; i < 3; i++) await create(page, "簡易候補の業務");
+  const mini = await context.newPage();
+  await mini.setViewportSize({ width: 360, height: 430 });
+  await mini.goto("/?window=quick-add");
+  const input = mini.getByLabel("トレイからタスク追加");
+  await input.fill("候補のない入力");
+  const before = await input.boundingBox();
+  await input.fill("簡易候補");
+  await expect(
+    mini.getByRole("option", { name: "簡易候補の業務", exact: true }),
+  ).toBeVisible();
+  expect(await input.boundingBox()).toEqual(before);
+  await mini.getByLabel("登録時の期限・通知").click();
+  await input.focus();
+  await expect(
+    mini.getByRole("option", { name: "簡易候補の業務", exact: true }),
+  ).toBeVisible();
+  await mini
+    .getByRole("option", { name: "簡易候補の業務", exact: true })
+    .click();
+  await expect(input).toHaveValue("簡易候補の業務");
+  await mini.getByLabel("期限日", { exact: true }).fill("2099-10-03");
+  await mini.getByLabel("入力欄を閉じる").click();
+  await expect(input).toHaveValue("");
+  await mini.getByLabel("登録時の期限・通知").click();
+  await expect(mini.getByLabel("期限日", { exact: true })).toHaveValue("");
+  await input.fill("Escで破棄");
+  await input.press("Escape");
+  await expect(input).toHaveValue("");
+  await mini.close();
 });

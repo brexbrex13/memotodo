@@ -29,7 +29,6 @@ func noticeStyle() int { return 0x08000000 | 0x00000008 | 0x00040000 | 0x0001000
 // still used so WebView2 visibility and Wails window state remain consistent.
 // The hook also covers late WebView2 focus requests after navigation completes.
 var noticeHook uintptr
-var noticeHWND uintptr
 var noticeHandles = map[uintptr]bool{}
 var setHook = user32.NewProc("SetWindowsHookExW")
 var nextHook = user32.NewProc("CallNextHookEx")
@@ -62,20 +61,24 @@ func releaseNoticeNative() {
 	})
 }
 
-func showNotice(w *application.WebviewWindow) {
+func registerPassiveWindow(w *application.WebviewWindow) {
 	application.InvokeSync(func() {
-		noticeHWND = uintptr(w.NativeWindow())
-		noticeHandles[noticeHWND] = true
+		hwnd := uintptr(w.NativeWindow())
+		noticeHandles[hwnd] = true
 		if noticeHook == 0 {
-			thread, _, _ := getThread.Call(noticeHWND, 0)
+			thread, _, _ := getThread.Call(hwnd, 0)
 			noticeHook, _, _ = setHook.Call(5, activationGuard, 0, thread)
 		}
 	})
+}
+func showNotice(w *application.WebviewWindow) {
+	registerPassiveWindow(w)
 	w.Show()
 	application.InvokeSync(func() {
-		showWindow.Call(noticeHWND, 4)
-		setWindowPos.Call(noticeHWND, ^uintptr(0), 0, 0, 0, 0, 0x0001|0x0002|0x0010|0x0040)
-		flashNotice(noticeHWND, true)
+		hwnd := uintptr(w.NativeWindow())
+		showWindow.Call(hwnd, 4)
+		setWindowPos.Call(hwnd, ^uintptr(0), 0, 0, 0, 0, 0x0001|0x0002|0x0010|0x0040)
+		flashNotice(hwnd, true)
 	})
 }
 func noticeSound() { messageBeep.Call(0x40) }

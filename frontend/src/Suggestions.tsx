@@ -131,6 +131,9 @@ export function useSuggestions(
   ) : null;
   return {
     list,
+    items,
+    index,
+    choose,
     keyDown,
     compositionStart: () => {
       composing.current = true;

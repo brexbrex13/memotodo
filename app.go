@@ -23,36 +23,45 @@ import (
 )
 
 type App struct {
-	shortcut        *shortcutManager
-	settingsMu      sync.Mutex
-	shortcutError   string
-	quickPrevious   atomic.Uintptr
-	quickCursor     atomic.Bool
-	quickGeneration atomic.Uint64
-	quickX, quickY  int32
-	store           *board.Store
-	desktop         *application.App
-	main, notice    *application.WebviewWindow
-	mini            *application.WebviewWindow
-	tray            *application.SystemTray
-	trayGeneration  atomic.Uint64
-	trayDouble      atomic.Int64
-	stop            chan struct{}
-	wg              sync.WaitGroup
-	mu              sync.Mutex
-	seen            map[int64]bool
-	noticeWindows   map[int64]*application.WebviewWindow
-	noticeLoaded    map[int64]bool
-	noticeShown     map[int64]bool
-	noticeVisible   bool
-	noticeReady     atomic.Bool
-	startOnce       sync.Once
-	stopOnce        sync.Once
-	quitting        atomic.Bool
+	shortcut             *shortcutManager
+	settingsMu           sync.Mutex
+	shortcutError        string
+	quickPrevious        atomic.Uintptr
+	quickCursor          atomic.Bool
+	quickGeneration      atomic.Uint64
+	quickX, quickY       int32
+	store                *board.Store
+	desktop              *application.App
+	main, notice         *application.WebviewWindow
+	mini                 *application.WebviewWindow
+	quickSuggestions     *application.WebviewWindow
+	quickSuggestionMu    sync.Mutex
+	quickSuggestionData  QuickSuggestions
+	quickSuggestionReady atomic.Bool
+	tray                 *application.SystemTray
+	trayGeneration       atomic.Uint64
+	trayDouble           atomic.Int64
+	stop                 chan struct{}
+	wg                   sync.WaitGroup
+	mu                   sync.Mutex
+	seen                 map[int64]bool
+	noticeWindows        map[int64]*application.WebviewWindow
+	noticeLoaded         map[int64]bool
+	noticeShown          map[int64]bool
+	noticeVisible        bool
+	noticeReady          atomic.Bool
+	startOnce            sync.Once
+	stopOnce             sync.Once
+	quitting             atomic.Bool
 }
 
 func (a *App) start() { a.startOnce.Do(func() { a.wg.Add(1); go a.run() }) }
 func (a *App) Ready(window string) {
+	if window == "quick-suggestions" {
+		a.quickSuggestionReady.Store(true)
+		a.refreshQuickSuggestions()
+		return
+	}
 	if strings.HasPrefix(window, "notifications:") {
 		id, _ := strconv.ParseInt(strings.TrimPrefix(window, "notifications:"), 10, 64)
 		a.mu.Lock()
@@ -273,6 +282,7 @@ func (a *App) refreshNotice() {
 }
 func (a *App) openMain(id int64) {
 	if a.mini != nil {
+		a.hideQuickSuggestions()
 		a.mini.Hide()
 	}
 	a.main.Show()
@@ -431,33 +441,49 @@ func (a *App) showQuickAddMode(cursor bool) {
 	if a.quitting.Load() || a.tray == nil {
 		return
 	}
+	a.hideQuickSuggestions()
 	a.quickGeneration.Add(1)
 	a.quickCursor.Store(cursor)
+	a.captureQuickPoint()
 	a.rememberQuickFocus()
 	a.tray.ShowWindow()
 	if cursor {
-		a.placeQuickAtCursor(true)
-	}
-	a.desktop.Event.Emit("board:mini-focus")
-}
-func (a *App) SetQuickAddExpanded(expanded bool) { a.SetQuickAddLayout(expanded, false) }
-func (a *App) SetQuickAddLayout(expanded, options bool) {
-	if a.mini == nil {
-		return
-	}
-	height := 105
-	if expanded {
-		height = 285
-	}
-	if options {
-		height = 430
-	}
-	a.mini.SetSize(360, height)
-	if a.quickCursor.Load() {
 		a.placeQuickAtCursor(false)
-	} else if a.tray != nil {
-		a.tray.PositionWindow(a.mini, 8)
+	} else {
+		a.clampQuickToWorkArea()
 	}
+	a.desktop.Event.Emit("board:mini-focus", a.quickGeneration.Load())
+}
+func (a *App) SetQuickAddExpanded(expanded bool) {
+	a.SetQuickAddLayout(expanded, false, a.quickGeneration.Load())
+}
+func (a *App) SetQuickAddLayout(expanded, options bool, generation uint64) {
+	application.InvokeSync(func() {
+		if generation != a.quickGeneration.Load() {
+			return
+		}
+		if a.mini == nil {
+			return
+		}
+		height := 105
+		_ = expanded // Suggestions never resize the input window.
+		if options {
+			height = 430
+		}
+		currentWidth, currentHeight := a.mini.Size()
+		if currentWidth == 360 && currentHeight == height {
+			return
+		}
+		a.hideQuickSuggestionWindow()
+		a.mini.SetSize(360, height)
+		if a.quickCursor.Load() {
+			a.placeQuickAtCursor(false)
+		} else if a.tray != nil {
+			a.tray.PositionWindow(a.mini, 8)
+			a.clampQuickToWorkArea()
+		}
+		a.refreshQuickSuggestions()
+	})
 }
 func (a *App) Acknowledge(id int64) error {
 	e := a.store.Acknowledge(id)
@@ -485,10 +511,13 @@ func (a *App) TestNotification() error {
 }
 func (a *App) OpenTask(id int64) { a.openMain(id) }
 func (a *App) HideQuickAdd() {
+	generation := a.quickGeneration.Add(1)
+	a.desktop.Event.Emit("board:mini-reset", generation)
 	if a.mini != nil {
-		a.hideQuickNative()
+		a.hideQuickNative(generation)
 	}
 }
+
 func (a *App) ToggleImportant(id int64) error {
 	if e := a.store.ToggleImportant(id); e != nil {
 		return e
