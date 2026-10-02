@@ -187,6 +187,7 @@ export default function App() {
   const [data, setData] = useState<Snapshot | null>(null),
     [error, setError] = useState(""),
     [view, setView] = useState("board"),
+    [todayOnly, setTodayOnly] = useState(false),
     [category, setCategory] = useState(-1),
     [query, setQuery] = useState(""),
     [important, setImportant] = useState(false),
@@ -211,7 +212,8 @@ export default function App() {
     [search, setSearch] = useState(false);
   useTheme(data?.settings.theme);
   const handle = useRef<DraftHandle | null>(null),
-    quickRef = useRef<HTMLTextAreaElement>(null);
+    quickRef = useRef<HTMLTextAreaElement>(null),
+    addLock = useRef(false);
   const suggest = useSuggestions(
     data?.tasks ?? [],
     quick,
@@ -268,7 +270,8 @@ export default function App() {
       on("board:error", report),
       on("board:quick", () => {
         setView("board");
-        quickRef.current?.focus();
+        setTodayOnly(false);
+        requestAnimationFrame(() => quickRef.current?.focus());
       }),
       on("board:open", (id) => {
         void api<Snapshot>("GetSnapshot")
@@ -321,7 +324,8 @@ export default function App() {
       if (e.ctrlKey && e.key === "n") {
         e.preventDefault();
         setView("board");
-        quickRef.current?.focus();
+        setTodayOnly(false);
+        requestAnimationFrame(() => quickRef.current?.focus());
       }
       if (e.ctrlKey && e.key === "f") {
         e.preventDefault();
@@ -349,14 +353,16 @@ export default function App() {
     }),
   );
   const add = async () => {
-    if (adding || !quick.trim()) return;
+    if (addLock.current || (view !== "board" && !todayOnly) || !quick.trim())
+      return;
+    addLock.current = true;
     setAdding(true);
     try {
       await api("SaveTask", {
         ...emptyTask(category > 0 ? category : 0),
         title: quick,
         ...quickOptions,
-        today_date: view === "today" ? date() : "",
+        today_date: todayOnly ? date() : "",
       });
       setQuick("");
       setQuickOptions({
@@ -369,11 +375,18 @@ export default function App() {
       suggest.reset();
       setQuickOptionsOpen(false);
       await reload();
-      quickRef.current?.focus();
     } catch (e) {
       report(e);
     } finally {
       setAdding(false);
+      addLock.current = false;
+      requestAnimationFrame(() => {
+        if (
+          document.activeElement === quickRef.current ||
+          document.activeElement === document.body
+        )
+          quickRef.current?.focus();
+      });
     }
   };
   const state = async (t: Task, value: string) => {
@@ -414,19 +427,22 @@ export default function App() {
   const visibleCategories = categories.filter((c) => !c.dormant);
   let tasks = data.tasks
     .filter((t) =>
-      view === "trash"
-        ? !!t.deleted_at
-        : view === "history"
-          ? !t.deleted_at && t.status !== "pending"
-          : !t.deleted_at && t.status === "pending",
+      todayOnly
+        ? !t.deleted_at && t.status === "pending"
+        : view === "trash"
+          ? !!t.deleted_at
+          : view === "history"
+            ? !t.deleted_at && t.status !== "pending"
+            : !t.deleted_at && t.status === "pending",
     )
     .filter(
       (t) =>
+        todayOnly ||
         (view !== "board" && view !== "recurring") ||
         (view === "recurring" ? t.series_id > 0 : t.series_id === 0),
     )
-    .filter((t) => view !== "today" || t.today_date === date())
-    .filter((t) => category < 0 || t.category_id === category)
+    .filter((t) => !todayOnly || t.today_date === date())
+    .filter((t) => todayOnly || category < 0 || t.category_id === category)
     .filter((t) => !important || t.important)
     .filter((t) => !dated || t.deadline)
     .filter(
@@ -443,18 +459,19 @@ export default function App() {
     );
   tasks = tasks.sort((a, b) => a.sort_order - b.sort_order || b.id - a.id);
   const groups = (
-    view === "board" || view === "recurring" || view === "today"
+    view === "board" || view === "recurring" || todayOnly
       ? visibleCategories
       : categories
   )
-    .filter((c) => category < 0 || c.id === category)
+    .filter((c) => todayOnly || category < 0 || c.id === category)
     .filter(
       (c) =>
-        (view !== "recurring" && view !== "today") ||
+        (view !== "recurring" && !todayOnly) ||
         tasks.some((t) => t.category_id === c.id),
     );
   const drag =
     (view === "board" || view === "recurring") &&
+    !todayOnly &&
     !query &&
     !important &&
     !dated;
@@ -494,10 +511,13 @@ export default function App() {
     .sort((a, b) => a.deadline.localeCompare(b.deadline));
   const setTab = (next: string, id = -1) =>
     void navigate(() => {
+      setTodayOnly(false);
       setView(next);
       setCategory(id);
       setPanel("");
     });
+  const pendingCount = data.notifications.filter((n) => !n.acknowledged).length;
+  const inputAvailable = view === "board" || todayOnly;
   return (
     <div
       className={"app " + (data.settings.compact ? "compact" : "")}
@@ -523,6 +543,15 @@ export default function App() {
           </button>
           <button
             className="icon"
+            aria-label="完了済み"
+            data-tip="完了済み"
+            aria-pressed={view === "history"}
+            onClick={() => setTab(view === "history" ? "board" : "history")}
+          >
+            <Icon name="check" />
+          </button>
+          <button
+            className="icon"
             data-popup
             aria-label="メニュー"
             onClick={() => {
@@ -531,6 +560,9 @@ export default function App() {
             }}
           >
             ⋯
+            {pendingCount > 0 && (
+              <span className="notification-badge">{pendingCount}</span>
+            )}
           </button>
           <button
             className="icon"
@@ -550,8 +582,10 @@ export default function App() {
         <nav className="popover app-menu" aria-label="メニュー項目">
           <button onClick={() => void navigate(() => setPanel("notices"))}>
             未確認の通知
+            {pendingCount > 0 && (
+              <span className="notification-badge">{pendingCount}</span>
+            )}
           </button>
-          <button onClick={() => setTab("history")}>完了済み</button>
           <button onClick={() => setTab("trash")}>ごみ箱</button>
           <hr />
           <button onClick={() => void navigate(() => setPanel("categories"))}>
@@ -692,26 +726,39 @@ export default function App() {
       )}
       <div className="workspace">
         <main className="board-main">
-          {(view === "board" || view === "today") && (
-            <div className="quick" data-popup>
+          {
+            <div
+              className={"quick" + (!inputAvailable ? " unavailable" : "")}
+              data-popup
+            >
               <textarea
                 ref={quickRef}
                 aria-label="新しい付箋"
                 placeholder={
-                  category > 0
-                    ? "このカテゴリに追加…"
-                    : "タスクを入力してEnterで追加"
+                  !inputAvailable
+                    ? "この表示ではタスクを追加できません"
+                    : category > 0
+                      ? "このカテゴリに追加…"
+                      : "タスクを入力してEnterで追加"
                 }
                 data-tip="Enterで追加、Shift+Enterで改行"
                 value={quick}
-                disabled={adding}
-                onFocus={suggest.reset}
+                readOnly={adding || !inputAvailable}
+                aria-disabled={!inputAvailable}
+                onCompositionStart={suggest.compositionStart}
+                onCompositionUpdate={suggest.compositionUpdate}
+                onCompositionEnd={suggest.compositionEnd}
+                onKeyUp={suggest.keyUp}
+                onFocus={() =>
+                  inputAvailable ? suggest.focus() : suggest.blur()
+                }
                 onBlur={suggest.blur}
                 onChange={(e) => {
                   setQuick(e.target.value);
                   suggest.reset();
                 }}
                 onKeyDown={(e) => {
+                  if (!inputAvailable || adding) return;
                   if (suggest.keyDown(e)) return;
                   if (
                     e.key === "Enter" &&
@@ -725,12 +772,13 @@ export default function App() {
                   }
                 }}
               />
-              {suggest.list}
+              {inputAvailable && suggest.list}
               <button
                 className="quick-clock"
                 aria-label="登録時の期限・通知"
                 aria-expanded={quickOptionsOpen}
                 data-tip="期限・通知・重要を設定して登録"
+                disabled={!inputAvailable || adding}
                 onClick={() => setQuickOptionsOpen(!quickOptionsOpen)}
               >
                 <Clock />
@@ -746,7 +794,7 @@ export default function App() {
                   {quickOptions.important && " · ★"}
                 </small>
               )}
-              {quickOptionsOpen && (
+              {inputAvailable && quickOptionsOpen && (
                 <div
                   className="popover quick-options"
                   aria-label="登録時の設定"
@@ -771,15 +819,8 @@ export default function App() {
                 </div>
               )}
             </div>
-          )}
+          }
           <div className="filters">
-            <button
-              className={view === "today" ? "active" : ""}
-              onClick={() => setTab("today")}
-            >
-              <Icon name="sun" />
-              今日やる
-            </button>
             <button
               className={
                 "recurring-tab " + (view === "recurring" ? "active" : "")
@@ -791,22 +832,16 @@ export default function App() {
             <button
               className={view === "board" && category < 0 ? "active" : ""}
               onClick={() => setTab("board")}
+              data-tip="通常タスクをすべて表示。定期タスクは定期タブで確認できます。"
             >
-              通常
+              全て
             </button>
             {visibleCategories.map((c) => (
               <button
                 key={c.id}
                 className={category === c.id ? "active" : ""}
                 onClick={() =>
-                  setTab(
-                    view === "recurring"
-                      ? "recurring"
-                      : view === "today"
-                        ? "today"
-                        : "board",
-                    c.id,
-                  )
+                  setTab(view === "recurring" ? "recurring" : "board", c.id)
                 }
               >
                 {c.name}
@@ -814,6 +849,19 @@ export default function App() {
             ))}
           </div>
           <div className="task-filters" aria-label="タスクの絞り込み">
+            <button
+              aria-pressed={todayOnly}
+              onClick={() =>
+                void navigate(() => {
+                  setTodayOnly(!todayOnly);
+                  setPanel("");
+                })
+              }
+            >
+              <Icon name="sun" />
+              今日やる
+            </button>
+
             <button
               aria-label="検索"
               aria-expanded={search}
@@ -852,7 +900,7 @@ export default function App() {
             />
           )}
 
-          {(view === "history" || view === "trash") && (
+          {!todayOnly && (view === "history" || view === "trash") && (
             <div className="section-head">
               <h2>{view === "history" ? "完了済み" : "ごみ箱"}</h2>
               <button onClick={() => setTab("board")}>一覧に戻る</button>
@@ -873,7 +921,7 @@ export default function App() {
             {groups.map((c) => {
               const items = tasks.filter((t) => t.category_id === c.id);
               return (
-                <Group c={c} hideTitle={category >= 0} key={c.id}>
+                <Group c={c} hideTitle={!todayOnly && category >= 0} key={c.id}>
                   <SortableContext
                     items={items.map((t) => t.id)}
                     strategy={verticalListSortingStrategy}

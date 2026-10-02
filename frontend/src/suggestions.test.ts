@@ -2,6 +2,14 @@ import { describe, it, expect } from "vitest";
 import { suggestions } from "./Suggestions";
 import { emptyTask } from "./types";
 describe("input suggestions", () => {
+  it("shows frequent titles on empty focus and matches kana across scripts", () => {
+    const tasks = ["カタカナ業務", "かたかな業務", "日報作成", "日報作成"].map(
+      (title) => ({ ...emptyTask(), title }),
+    );
+    expect(suggestions(tasks, "かた", 2)).toEqual(["カタカナ業務"]);
+    expect(suggestions(tasks, "ｶﾀ", 2)).toEqual(["カタカナ業務"]);
+    expect(suggestions(tasks, "", 2)).toContain("日報作成");
+  });
   it("counts manual registrations, excludes recurring and trash, and respects threshold", () => {
     const task = {
       ...emptyTask(),

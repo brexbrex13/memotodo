@@ -143,3 +143,103 @@ test("suggestions complete only title; Enter still adds directly and IME is safe
   snapshot = await service(page, "GetSnapshot");
   expect(snapshot.tasks.some((t: any) => t.title === "請")).toBe(true);
 });
+
+test("stable tabs, reversible today filter, continuous registration and uncommitted IME suggestions", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const input = page.getByLabel("新しい付箋");
+  await expect(input).toBeVisible();
+  const category = await service(page, "SaveCategory", {
+    id: 0,
+    name: "復帰確認カテゴリ",
+    color: "#ffffff",
+    text_color: "#222222",
+    sort_order: 0,
+    dormant: false,
+  });
+  const task = await create(page, "カテゴリ復帰確認", {
+    category_id: category.id,
+  });
+  const outside = await create(page, "カテゴリ外の今日", {});
+  await service(page, "ToggleToday", outside.id);
+  const tab = page.getByRole("button", {
+    name: "復帰確認カテゴリ",
+    exact: true,
+  });
+  await tab.click();
+  await expect(
+    page.locator("article").filter({ hasText: task.title }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "今日やる", exact: true }).click();
+  await expect(
+    page.locator("article").filter({ hasText: outside.title }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "今日やる", exact: true }).click();
+  await expect(tab).toHaveClass(/active/);
+  await expect(
+    page.locator("article").filter({ hasText: task.title }),
+  ).toBeVisible();
+  await expect(
+    page.locator("article").filter({ hasText: outside.title }),
+  ).toHaveCount(0);
+  const regular = page.getByRole("button", { name: "定期", exact: true });
+  const before = await regular.boundingBox();
+  await regular.click();
+  await expect(input).toHaveAttribute("readonly", "");
+  const after = await regular.boundingBox();
+  expect(after?.y).toBe(before?.y);
+  await page.getByRole("button", { name: "全て", exact: true }).click();
+  await input.fill("連続登録一件目");
+  await input.press("Enter");
+  await expect(input).toHaveValue("");
+  await expect(input).toBeFocused();
+  await input.pressSequentially("second continuous task");
+  await input.press("Enter");
+  await expect(input).toHaveValue("");
+  await expect(input).toBeFocused();
+  for (let i = 0; i < 3; i++) await create(page, "日報作成");
+  await input.evaluate((el: HTMLTextAreaElement) => el.blur());
+  await input.click();
+  await expect(
+    page.getByRole("option", { name: "日報作成", exact: true }),
+  ).toBeVisible();
+  await input.dispatchEvent("compositionstart", { data: "" });
+  await input.fill("にっ");
+  await input.dispatchEvent("compositionupdate", { data: "にっ" });
+  await expect(
+    page.getByRole("option", { name: "日報作成", exact: true }),
+  ).toBeVisible();
+  await input.press("Enter");
+  await expect(input).toHaveValue(/^にっ/);
+  const snapshot = await service(page, "GetSnapshot");
+  expect(snapshot.tasks.some((t: any) => t.title === "にっ")).toBe(false);
+  await input.dispatchEvent("compositionend", { data: "日報" });
+  await input.dispatchEvent("keyup", { key: "Enter" });
+});
+
+test("notification pause accepts relative periods and can be cleared; shortcut offers Space", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.getByLabel("新しい付箋")).toBeVisible();
+  await page.getByRole("button", { name: "メニュー", exact: true }).click();
+  await page.getByRole("button", { name: "設定", exact: true }).click();
+  const panel = page
+    .locator(".modal")
+    .filter({ has: page.getByRole("heading", { name: "設定", exact: true }) });
+  await expect(
+    panel
+      .getByLabel("ショートカットのキー")
+      .locator('option[value="Space"], option')
+      .filter({ hasText: /^Space$/ }),
+  ).toHaveCount(1);
+  await panel.getByRole("button", { name: "30分", exact: true }).click();
+  const pause = panel.getByLabel("通知を一時停止（再開日時）");
+  expect(
+    new Date(await pause.inputValue()).getTime() - Date.now(),
+  ).toBeGreaterThan(28 * 60000);
+  await panel.getByRole("button", { name: "解除", exact: true }).click();
+  await expect(pause).toHaveValue("");
+  await panel.getByRole("button", { name: "今すぐ保存", exact: true }).click();
+});

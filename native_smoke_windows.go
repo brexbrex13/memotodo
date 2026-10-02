@@ -344,6 +344,21 @@ func startNativeVerification(a *App) {
 			return
 		}
 		competitor.Close()
+		// General keys use the same native registration and conflict safeguards.
+		general := settings.Settings
+		general.QuickShortcut = "Ctrl+Alt+Space"
+		if err = a.SaveSettings(general); err != nil {
+			finish(err)
+			return
+		}
+		spaceCompetitor := newShortcutManager(func() {})
+		if err = spaceCompetitor.Change(general.QuickShortcut); err == nil {
+			spaceCompetitor.Close()
+			finish(fmt.Errorf("duplicate Space shortcut accepted"))
+			return
+		}
+		spaceCompetitor.Close()
+		result["global-shortcut-space"] = true
 		if err = a.SaveSettings(settings.Settings); err != nil {
 			finish(err)
 			return

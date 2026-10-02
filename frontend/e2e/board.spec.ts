@@ -41,10 +41,10 @@ test("task, rich memo, save-close, history and reopen", async ({ page }) => {
   await expect(memo.locator("img")).toBeVisible();
   await page.getByRole("button", { name: "完了", exact: true }).click();
   await expect(row).toHaveCount(0);
-  await menu(page, "完了済み");
+  await page.getByRole("button", { name: "完了済み", exact: true }).click();
   await row.locator(".card-content").click();
   await page.getByRole("button", { name: "再開する", exact: true }).click();
-  await page.getByRole("button", { name: "通常", exact: true }).click();
+  await page.getByRole("button", { name: "全て", exact: true }).click();
   await expect(row).toBeVisible();
 });
 test("category context, live colors, custom palette, dormancy and reordering", async ({
@@ -144,6 +144,19 @@ test("notification close does not complete and summary open closes only summary"
   await expect(
     page.getByRole("heading", { name: "設定", exact: true }),
   ).toHaveCount(0);
+  await expect(
+    page
+      .getByRole("button", { name: "メニュー", exact: true })
+      .locator(".notification-badge"),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "メニュー", exact: true }).click();
+  await expect(
+    page
+      .locator(".app-menu button")
+      .filter({ hasText: "未確認の通知" })
+      .locator(".notification-badge"),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "メニュー", exact: true }).click();
   const notice = await context.newPage();
   await notice.setViewportSize({ width: 360, height: 170 });
   const result = await page.request.get(
@@ -177,7 +190,7 @@ test("DnD across category boxes including empty categories", async ({
   page,
 }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "通常", exact: true }).click();
+  await page.getByRole("button", { name: "全て", exact: true }).click();
   const source = page
     .locator("article")
     .filter({ hasText: "カテゴリに自動登録" });

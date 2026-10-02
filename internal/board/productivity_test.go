@@ -118,7 +118,7 @@ func TestUndoCompletionRestoresReminderWithoutRedelivery(t *testing.T) {
 	}
 }
 func TestShortcutValidation(t *testing.T) {
-	for _, s := range []string{"", "Ctrl+Alt+N", "Alt+Shift+F11", "Ctrl+1"} {
+	for _, s := range []string{"", "Ctrl+Alt+N", "Alt+Shift+F11", "Ctrl+1", "Ctrl+Alt+Space", "Alt+Home", "Ctrl+NumpadAdd", "Ctrl+F24"} {
 		if _, _, e := ParseShortcut(s); e != nil {
 			t.Fatal(s, e)
 		}

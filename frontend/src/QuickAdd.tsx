@@ -21,7 +21,8 @@ export function QuickAdd() {
       setError(String(e)),
     );
   }, [suggest.open, !!error]);
-  const input = useRef<HTMLInputElement>(null);
+  const input = useRef<HTMLInputElement>(null),
+    addLock = useRef(false);
   useTheme(snapshot?.settings.theme);
   useEffect(() => {
     localStorage.setItem("tray-quick-draft", text);
@@ -41,18 +42,27 @@ export function QuickAdd() {
     };
   }, []);
   const add = async () => {
-    if (busy || !text.trim()) return;
+    if (addLock.current || !text.trim()) return;
+    addLock.current = true;
     setBusy(true);
     setError("");
     try {
       await api("SaveTask", { ...emptyTask(), title: text });
       setText("");
       suggest.reset();
-      await api("HideQuickAdd");
     } catch (e) {
       setError(String(e));
     } finally {
       setBusy(false);
+      addLock.current = false;
+      requestAnimationFrame(() => {
+        if (
+          document.hasFocus() &&
+          (document.activeElement === input.current ||
+            document.activeElement === document.body)
+        )
+          input.current?.focus();
+      });
     }
   };
   return (
@@ -71,14 +81,19 @@ export function QuickAdd() {
         aria-label="トレイからタスク追加"
         placeholder="入力してEnterで追加"
         value={text}
-        disabled={busy}
-        onFocus={suggest.reset}
+        readOnly={busy}
+        onCompositionStart={suggest.compositionStart}
+        onCompositionUpdate={suggest.compositionUpdate}
+        onCompositionEnd={suggest.compositionEnd}
+        onKeyUp={suggest.keyUp}
+        onFocus={suggest.focus}
         onBlur={suggest.blur}
         onChange={(e) => {
           setText(e.target.value);
           suggest.reset();
         }}
         onKeyDown={(e) => {
+          if (busy) return;
           if (suggest.keyDown(e)) return;
           if (
             e.key === "Enter" &&

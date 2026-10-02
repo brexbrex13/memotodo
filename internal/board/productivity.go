@@ -8,8 +8,17 @@ import (
 	"time"
 )
 
-// Empty means disabled. Restrict to portable, clearly named combinations;
+// Empty means disabled. F12 is reserved by Windows for the debugger;
 // Windows validates actual availability when registering the shortcut.
+var shortcutKeys = map[string]uint32{
+	"Space": 0x20, "Tab": 0x09, "Enter": 0x0D, "Escape": 0x1B, "Backspace": 0x08,
+	"Insert": 0x2D, "Delete": 0x2E, "Home": 0x24, "End": 0x23, "PageUp": 0x21, "PageDown": 0x22,
+	"Left": 0x25, "Up": 0x26, "Right": 0x27, "Down": 0x28,
+	"Numpad0": 0x60, "Numpad1": 0x61, "Numpad2": 0x62, "Numpad3": 0x63, "Numpad4": 0x64,
+	"Numpad5": 0x65, "Numpad6": 0x66, "Numpad7": 0x67, "Numpad8": 0x68, "Numpad9": 0x69,
+	"NumpadMultiply": 0x6A, "NumpadAdd": 0x6B, "NumpadSubtract": 0x6D, "NumpadDecimal": 0x6E, "NumpadDivide": 0x6F,
+}
+
 func ParseShortcut(v string) (uint32, uint32, error) {
 	if v == "" {
 		return 0, 0, nil
@@ -23,9 +32,12 @@ func ParseShortcut(v string) (uint32, uint32, error) {
 			}
 			if strings.HasPrefix(p, "F") {
 				var n int
-				if _, e := fmt.Sscanf(p, "F%d", &n); e == nil && n >= 1 && n <= 11 && p == fmt.Sprintf("F%d", n) {
+				if _, e := fmt.Sscanf(p, "F%d", &n); e == nil && n >= 1 && n <= 24 && n != 12 && p == fmt.Sprintf("F%d", n) {
 					key = uint32(0x70 + n - 1)
 				}
+			}
+			if vk, ok := shortcutKeys[p]; ok {
+				key = vk
 			}
 			continue
 		}
@@ -38,7 +50,7 @@ func ParseShortcut(v string) (uint32, uint32, error) {
 		case "Shift":
 			bit = 4
 		default:
-			return 0, 0, errors.New("ショートカットはCtrl・Alt・Shiftと英数字またはF1〜F11を組み合わせてください")
+			return 0, 0, errors.New("ショートカットはCtrl・Alt・Shiftと対応するキーを組み合わせてください")
 		}
 		if mods&bit != 0 {
 			return 0, 0, errors.New("修飾キーが重複しています")
@@ -46,7 +58,7 @@ func ParseShortcut(v string) (uint32, uint32, error) {
 		mods |= bit
 	}
 	if key == 0 || mods&3 == 0 {
-		return 0, 0, errors.New("ショートカットにはCtrlまたはAltと、英数字またはF1〜F11を指定してください")
+		return 0, 0, errors.New("ショートカットにはCtrlまたはAltと、対応するキーを指定してください")
 	}
 	return mods, key, nil
 }

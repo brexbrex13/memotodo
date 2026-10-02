@@ -231,17 +231,6 @@ export function TaskDetail({
             ))}
           </select>
         </fieldset>
-        {task.series_id > 0 &&
-          draft.status === "pending" &&
-          !draft.deleted_at && (
-            <button
-              className="skip-occurrence"
-              disabled={busy}
-              onClick={() => void state("skipped")}
-            >
-              今回は見送る
-            </button>
-          )}
       </div>
       <footer>
         <button

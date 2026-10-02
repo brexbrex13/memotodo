@@ -129,8 +129,34 @@ export function SettingsForm({
               />
               通知内容を隠し、件数だけ表示
             </label>
+            <div className="wide pause-presets">
+              {[10, 30, 60, 360, 1440].map((minutes) => (
+                <button
+                  type="button"
+                  key={minutes}
+                  onClick={() => {
+                    const until = new Date(Date.now() + minutes * 60000);
+                    const local = new Date(
+                      until.getTime() - until.getTimezoneOffset() * 60000,
+                    )
+                      .toISOString()
+                      .slice(0, 16);
+                    patch({ pause_until: local });
+                  }}
+                >
+                  {minutes < 60
+                    ? minutes + "分"
+                    : minutes < 1440
+                      ? minutes / 60 + "時間"
+                      : "1日"}
+                </button>
+              ))}
+              <button type="button" onClick={() => patch({ pause_until: "" })}>
+                解除
+              </button>
+            </div>
             <label>
-              通知を保留する期限
+              通知を一時停止（再開日時）
               <input
                 type="datetime-local"
                 value={v.pause_until.slice(0, 16)}

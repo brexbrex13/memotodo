@@ -1,21 +1,27 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Task } from "./types";
+const fold = (v: string) =>
+  v
+    .trim()
+    .normalize("NFKC")
+    .toLocaleLowerCase()
+    .replace(/[ァ-ヶ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60));
 export function suggestions(
   tasks: Task[],
   query: string,
   minimum: number,
   category = -1,
 ): string[] {
-  const q = query.trim().normalize("NFKC").toLocaleLowerCase();
-  if (!q || minimum === 0 || query.includes("\n")) return [];
+  const q = fold(query);
+  if (minimum === 0 || query.includes("\n")) return [];
   const counts = new Map<
     string,
     { title: string; count: number; recent: string; category: boolean }
   >();
   for (const t of tasks) {
     if (t.series_id || t.deleted_at) continue;
-    const key = t.title.trim().normalize("NFKC").toLocaleLowerCase();
-    if (!key.startsWith(q) || key === q) continue;
+    const key = fold(t.title);
+    if (!key.startsWith(q) || (q && key === q)) continue;
     const old = counts.get(key);
     if (old) {
       old.count++;
@@ -50,21 +56,33 @@ export function useSuggestions(
   onChoose: (title: string) => void,
   category = -1,
 ) {
-  const [closed, setClosed] = useState(""),
+  const composing = useRef(false),
+    commitEnter = useRef(0);
+  const [imeQuery, setImeQuery] = useState<string | null>(null);
+  const [closed, setClosed] = useState<string | null>(null),
     [index, setIndex] = useState(-1),
     [active, setActive] = useState(false);
+  const matching = suggestions(tasks, imeQuery ?? query, minimum, category);
   const items =
     !active || closed === query
       ? []
-      : suggestions(tasks, query, minimum, category);
+      : matching.length || imeQuery === null
+        ? matching
+        : suggestions(tasks, "", minimum, category);
   const choose = (title: string) => {
     onChoose(title);
     setClosed(title);
     setIndex(-1);
   };
   const keyDown = (e: React.KeyboardEvent) => {
-    if (e.nativeEvent.isComposing || e.keyCode === 229 || !items.length)
-      return false;
+    if (
+      composing.current ||
+      e.nativeEvent.isComposing ||
+      e.keyCode === 229 ||
+      (performance.now() < commitEnter.current && e.key === "Enter")
+    )
+      return true;
+    if (!items.length) return false;
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
       setIndex((i) =>
@@ -114,11 +132,37 @@ export function useSuggestions(
   return {
     list,
     keyDown,
+    compositionStart: () => {
+      composing.current = true;
+      commitEnter.current = 0;
+      setImeQuery("");
+    },
+    compositionUpdate: (e: React.CompositionEvent) => {
+      setImeQuery(e.data);
+      setClosed(null);
+    },
+    compositionEnd: () => {
+      composing.current = false;
+      commitEnter.current = performance.now() + 80;
+      setImeQuery(null);
+    },
+    keyUp: () => {
+      if (!composing.current) commitEnter.current = 0;
+    },
     open: items.length > 0,
-    blur: () => setActive(false),
+    focus: () => {
+      commitEnter.current = 0;
+      setActive(true);
+      setClosed(null);
+      setIndex(-1);
+    },
+    blur: () => {
+      commitEnter.current = 0;
+      setActive(false);
+    },
     reset: () => {
       setActive(true);
-      setClosed("");
+      setClosed(null);
       setIndex(-1);
     },
   };
