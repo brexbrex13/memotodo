@@ -6,6 +6,9 @@ export type Task = {
   status: string;
   deadline: string;
   reminder_at: string;
+  reminder_mode?: string;
+  reminder_time?: string;
+  today_date?: string;
   notified_at: string;
   category_id: number;
   important: boolean;
@@ -65,6 +68,9 @@ export type ColorPreset = {
   foreground: string;
 };
 export type Settings = {
+  reminder_default_time?: string;
+  quick_shortcut?: string;
+  suggest_min_count?: number;
   theme?: "light" | "dark" | "system";
   series_show_days: number;
   custom_colors: ColorPreset[];

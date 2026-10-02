@@ -23,29 +23,45 @@ import (
 )
 
 type App struct {
-	store          *board.Store
-	desktop        *application.App
-	main, notice   *application.WebviewWindow
-	mini           *application.WebviewWindow
-	tray           *application.SystemTray
-	trayGeneration atomic.Uint64
-	trayDouble     atomic.Int64
-	stop           chan struct{}
-	wg             sync.WaitGroup
-	mu             sync.Mutex
-	seen           map[int64]bool
-	noticeWindows  map[int64]*application.WebviewWindow
-	noticeLoaded   map[int64]bool
-	noticeShown    map[int64]bool
-	noticeVisible  bool
-	noticeReady    atomic.Bool
-	startOnce      sync.Once
-	stopOnce       sync.Once
-	quitting       atomic.Bool
+	shortcut             *shortcutManager
+	settingsMu           sync.Mutex
+	shortcutError        string
+	quickPrevious        atomic.Uintptr
+	quickCursor          atomic.Bool
+	quickGeneration      atomic.Uint64
+	quickX, quickY       int32
+	store                *board.Store
+	desktop              *application.App
+	main, notice         *application.WebviewWindow
+	mini                 *application.WebviewWindow
+	quickSuggestions     *application.WebviewWindow
+	quickSuggestionMu    sync.Mutex
+	quickSuggestionData  QuickSuggestions
+	quickSuggestionReady atomic.Bool
+	tray                 *application.SystemTray
+	trayGeneration       atomic.Uint64
+	trayDouble           atomic.Int64
+	stop                 chan struct{}
+	wg                   sync.WaitGroup
+	mu                   sync.Mutex
+	seen                 map[int64]bool
+	noticeWindows        map[int64]*application.WebviewWindow
+	noticeLoaded         map[int64]bool
+	noticeShown          map[int64]bool
+	noticeVisible        bool
+	noticeReady          atomic.Bool
+	startOnce            sync.Once
+	stopOnce             sync.Once
+	quitting             atomic.Bool
 }
 
 func (a *App) start() { a.startOnce.Do(func() { a.wg.Add(1); go a.run() }) }
 func (a *App) Ready(window string) {
+	if window == "quick-suggestions" {
+		a.quickSuggestionReady.Store(true)
+		a.refreshQuickSuggestions()
+		return
+	}
 	if strings.HasPrefix(window, "notifications:") {
 		id, _ := strconv.ParseInt(strings.TrimPrefix(window, "notifications:"), 10, 64)
 		a.mu.Lock()
@@ -59,6 +75,11 @@ func (a *App) Ready(window string) {
 		a.noticeReady.Store(true)
 	}
 	a.start()
+	if window == "board" {
+		if status := a.GetShortcutStatus(); status != "" {
+			a.desktop.Event.Emit("board:error", status)
+		}
+	}
 	a.refreshNotice()
 }
 func (a *App) run() {
@@ -218,8 +239,7 @@ func (a *App) refreshNotice() {
 				a.noticeWindows[n.ID] = w
 			}
 		}
-		w.SetSize(width, height)
-		w.SetPosition(screen.WorkArea.X+screen.WorkArea.Width-width-12-column*452, screen.WorkArea.Y+screen.WorkArea.Height-height-12-offset)
+		w.SetBounds(application.Rect{X: screen.WorkArea.X + screen.WorkArea.Width - width - 12 - column*452, Y: screen.WorkArea.Y + screen.WorkArea.Height - height - 12 - offset, Width: width, Height: height})
 		if i == 0 {
 			if !a.noticeVisible {
 				showNotice(w)
@@ -262,6 +282,7 @@ func (a *App) refreshNotice() {
 }
 func (a *App) openMain(id int64) {
 	if a.mini != nil {
+		a.hideQuickSuggestions()
 		a.mini.Hide()
 	}
 	a.main.Show()
@@ -280,6 +301,15 @@ func (a *App) SaveTask(v board.Task) (board.Task, error) {
 	return t, e
 }
 func (a *App) SetState(id int64, state string) error {
+	if state == "done" {
+		c, e := a.store.Complete(id)
+		if e != nil {
+			return e
+		}
+		a.changed()
+		a.desktop.Event.Emit("board:completed", c)
+		return nil
+	}
 	e := a.store.SetState(id, state)
 	if e == nil {
 		a.changed()
@@ -324,12 +354,136 @@ func (a *App) StopSeries(id int64) error {
 	}
 	return e
 }
-func (a *App) SaveSettings(v board.Settings) error {
-	e := a.store.SaveSettings(v)
-	if e == nil {
-		a.changed()
+
+// Change only the category display preference, without overwriting settings drafts.
+func (a *App) SetCategoryCollapsed(id int64, collapsed bool) error {
+	a.settingsMu.Lock()
+	defer a.settingsMu.Unlock()
+	v, err := a.store.Snapshot()
+	if err != nil {
+		return err
 	}
-	return e
+	ids := make([]int64, 0, len(v.Settings.Collapsed)+1)
+	found := false
+	for _, c := range v.Categories {
+		if c.ID == id {
+			found = true
+			break
+		}
+	}
+	for _, existing := range v.Settings.Collapsed {
+		if existing != id {
+			ids = append(ids, existing)
+		}
+	}
+	if collapsed && found {
+		ids = append(ids, id)
+	}
+	v.Settings.Collapsed = ids
+	if err = a.store.SaveSettings(v.Settings); err != nil {
+		return err
+	}
+	a.changed()
+	return nil
+}
+
+func (a *App) SaveSettings(v board.Settings) error {
+	a.settingsMu.Lock()
+	defer a.settingsMu.Unlock()
+	old, e := a.store.Snapshot()
+	if e != nil {
+		return e
+	}
+	if e = a.store.ValidateSettings(v); e != nil {
+		return e
+	}
+	shortcutChanged := v.QuickShortcut != old.Settings.QuickShortcut
+	if a.shortcut != nil && shortcutChanged {
+		if e = a.shortcut.Change(v.QuickShortcut); e != nil {
+			return e
+		}
+	}
+	e = a.store.SaveSettings(v)
+	if e != nil {
+		if a.shortcut != nil && shortcutChanged {
+			a.shortcut.Change(old.Settings.QuickShortcut)
+		}
+		return e
+	}
+	if shortcutChanged {
+		a.shortcutError = ""
+	}
+	a.changed()
+	return nil
+}
+func (a *App) GetShortcutStatus() string {
+	a.settingsMu.Lock()
+	defer a.settingsMu.Unlock()
+	return a.shortcutError
+}
+func (a *App) ToggleToday(id int64) error {
+	if e := a.store.ToggleToday(id); e != nil {
+		return e
+	}
+	a.changed()
+	return nil
+}
+func (a *App) UndoCompletion(token string) error {
+	if e := a.store.UndoCompletion(token); e != nil {
+		return e
+	}
+	a.changed()
+	return nil
+}
+func (a *App) showQuickAdd()      { a.showQuickAddMode(false) }
+func (a *App) showQuickAtCursor() { a.showQuickAddMode(true) }
+func (a *App) showQuickAddMode(cursor bool) {
+	if a.quitting.Load() || a.tray == nil {
+		return
+	}
+	a.hideQuickSuggestions()
+	a.quickGeneration.Add(1)
+	a.quickCursor.Store(cursor)
+	a.captureQuickPoint()
+	a.rememberQuickFocus()
+	a.tray.ShowWindow()
+	if cursor {
+		a.placeQuickAtCursor(false)
+	} else {
+		a.clampQuickToWorkArea()
+	}
+	a.desktop.Event.Emit("board:mini-focus", a.quickGeneration.Load())
+}
+func (a *App) SetQuickAddExpanded(expanded bool) {
+	a.SetQuickAddLayout(expanded, false, a.quickGeneration.Load())
+}
+func (a *App) SetQuickAddLayout(expanded, options bool, generation uint64) {
+	application.InvokeSync(func() {
+		if generation != a.quickGeneration.Load() {
+			return
+		}
+		if a.mini == nil {
+			return
+		}
+		height := 105
+		_ = expanded // Suggestions never resize the input window.
+		if options {
+			height = 430
+		}
+		currentWidth, currentHeight := a.mini.Size()
+		if currentWidth == 360 && currentHeight == height {
+			return
+		}
+		a.hideQuickSuggestionWindow()
+		a.mini.SetSize(360, height)
+		if a.quickCursor.Load() {
+			a.placeQuickAtCursor(false)
+		} else if a.tray != nil {
+			a.tray.PositionWindow(a.mini, 8)
+			a.clampQuickToWorkArea()
+		}
+		a.refreshQuickSuggestions()
+	})
 }
 func (a *App) Acknowledge(id int64) error {
 	e := a.store.Acknowledge(id)
@@ -357,10 +511,13 @@ func (a *App) TestNotification() error {
 }
 func (a *App) OpenTask(id int64) { a.openMain(id) }
 func (a *App) HideQuickAdd() {
+	generation := a.quickGeneration.Add(1)
+	a.desktop.Event.Emit("board:mini-reset", generation)
 	if a.mini != nil {
-		a.mini.Hide()
+		a.hideQuickNative(generation)
 	}
 }
+
 func (a *App) ToggleImportant(id int64) error {
 	if e := a.store.ToggleImportant(id); e != nil {
 		return e
@@ -469,23 +626,44 @@ func (a *App) OpenDataFolder() error {
 }
 func (a *App) Backup() (string, error) { return a.store.Backup() }
 
+// The legacy byte API remains available for tests and existing clients, but the
+// desktop UI uses a native picker and streams the selected ZIP from disk.
 func (a *App) RestoreBackup(encoded string) error {
-	if len(encoded) > 70<<20 {
-		return errors.New("バックアップは50MB以内にしてください")
-	}
 	data, e := base64.StdEncoding.DecodeString(encoded)
 	if e != nil {
 		return e
 	}
-	if _, e = a.store.Backup(); e != nil {
+	return a.restoreBackup(func() error { return a.store.Restore(data) })
+}
+func (a *App) RestoreBackupFile() (bool, error) {
+	path, e := a.desktop.Dialog.OpenFile().SetTitle("MemoTodoのバックアップを選択").AddFilter("バックアップZIP", "*.zip").PromptForSingleSelection()
+	if e != nil || path == "" {
+		return false, e
+	}
+	e = a.restoreBackup(func() error { return a.store.RestoreFile(path) })
+	return e == nil, e
+}
+func (a *App) restoreBackup(restore func() error) error {
+	a.settingsMu.Lock()
+	defer a.settingsMu.Unlock()
+	if _, e := a.store.Backup(); e != nil {
 		return fmt.Errorf("復元前の退避に失敗しました: %w", e)
 	}
-	if e = a.store.Restore(data); e != nil {
+	if e := restore(); e != nil {
 		return e
 	}
 	a.mu.Lock()
 	a.seen = map[int64]bool{}
 	a.mu.Unlock()
+	if v, e := a.store.Snapshot(); e == nil && a.shortcut != nil {
+		if e = a.shortcut.Change(v.Settings.QuickShortcut); e != nil {
+			a.shortcut.Change("")
+			a.shortcutError = e.Error()
+			a.desktop.Event.Emit("board:error", a.shortcutError)
+		} else {
+			a.shortcutError = ""
+		}
+	}
 	a.changed()
 	return nil
 }
@@ -500,8 +678,7 @@ func (a *App) traySingleClick() {
 		if a.quitting.Load() || a.trayGeneration.Load() != generation {
 			return
 		}
-		a.tray.ShowWindow()
-		a.desktop.Event.Emit("board:mini-focus")
+		a.showQuickAdd()
 	})
 }
 func (a *App) trayDoubleClick() {

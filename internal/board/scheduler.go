@@ -200,6 +200,8 @@ func (s *Store) Snooze(notificationID int64, at string) error {
 		return errors.New("付箋は既に完了・削除されています")
 	}
 	t.ReminderAt = ISO(target)
+	t.ReminderMode = ""
+	t.ReminderTime = ""
 	t.NotifiedAt = ""
 	t.Version++
 	if e = put(tx, "tasks", t.ID, t); e != nil {

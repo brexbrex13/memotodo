@@ -125,6 +125,13 @@ func (s *Store) SaveSeries(v Series) (Series, error) {
 	if e := validateSeries(resolved); e != nil {
 		return v, e
 	}
+	if v.CategoryID == 0 {
+		var e error
+		v.CategoryID, e = defaultCategory(tx)
+		if e != nil {
+			return v, e
+		}
+	}
 	if v.CategoryID != 0 {
 		if _, e := load[Category](tx, "categories", v.CategoryID); e != nil {
 			return v, e

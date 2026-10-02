@@ -3,16 +3,19 @@ import { api } from "./api";
 import { editable, mergeDraft } from "./drafts";
 import { Category, Snapshot, Task } from "./types";
 import { Editor } from "./Editor";
+import { ReminderFields } from "./ReminderFields";
 import { Icon } from "./Icons";
 export type DraftHandle = { flush: () => Promise<void> };
 export function TaskDetail({
   task,
+  defaultTime,
   categories,
   onClose,
   onSaved,
   onError,
   handle,
 }: {
+  defaultTime?: string;
   task: Task;
   categories: Category[];
   onClose: () => void;
@@ -212,26 +215,11 @@ export function TaskDetail({
         <fieldset className="form-section">
           <legend>期限・通知</legend>
           <div className="formgrid">
-            <label>
-              期限日
-              <input
-                type="date"
-                value={draft.deadline.slice(0, 10)}
-                onChange={(e) =>
-                  change({
-                    deadline: e.target.value,
-                  })
-                }
-              />
-            </label>
-            <label data-tip="期限とは独立した通知時刻です。期限到達だけでは通知しません。">
-              通知時刻
-              <input
-                type="datetime-local"
-                value={draft.reminder_at.slice(0, 16)}
-                onChange={(e) => change({ reminder_at: e.target.value })}
-              />
-            </label>
+            <ReminderFields
+              value={draft}
+              onChange={change}
+              defaultTime={defaultTime}
+            />
           </div>
         </fieldset>
         <fieldset className="form-section category-section">
@@ -241,7 +229,6 @@ export function TaskDetail({
             value={draft.category_id}
             onChange={(e) => change({ category_id: +e.target.value })}
           >
-            <option value={0}>未分類</option>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -249,17 +236,6 @@ export function TaskDetail({
             ))}
           </select>
         </fieldset>
-        {task.series_id > 0 &&
-          draft.status === "pending" &&
-          !draft.deleted_at && (
-            <button
-              className="skip-occurrence"
-              disabled={busy}
-              onClick={() => void state("skipped")}
-            >
-              今回は見送る
-            </button>
-          )}
       </div>
       <footer>
         <button

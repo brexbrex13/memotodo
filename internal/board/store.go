@@ -16,10 +16,11 @@ import (
 // All mutations, scheduler ticks and snapshots share one lock. A notification and
 // its delivered marker are committed in one transaction; no UI event is the ledger.
 type Store struct {
-	mu  sync.Mutex
-	db  *sql.DB
-	Dir string
-	now func() time.Time
+	mu   sync.Mutex
+	db   *sql.DB
+	Dir  string
+	now  func() time.Time
+	undo map[string]completionUndo
 }
 
 func Open(dir string) (*Store, error) {
@@ -46,6 +47,19 @@ func Open(dir string) (*Store, error) {
 	// Freeze old inherited lead times at their current value. Common settings
 	// now only seed new rules, never change an existing rule's behaviour.
 	e = s.freezeInheritedLead(db)
+	if e != nil {
+		db.Close()
+		return nil, e
+	}
+	tx, e := db.Begin()
+	if e == nil {
+		e = normalizeCategories(tx)
+		if e == nil {
+			e = tx.Commit()
+		} else {
+			tx.Rollback()
+		}
+	}
 	if e != nil {
 		db.Close()
 		return nil, e
@@ -158,6 +172,11 @@ func validateTask(t Task) error {
 			}
 		}
 	}
+	if t.TodayDate != "" {
+		if _, e := time.Parse("2006-01-02", t.TodayDate); e != nil {
+			return errors.New("今日やるの日付が不正です")
+		}
+	}
 	return nil
 }
 func (s *Store) SaveTask(t Task) (Task, error) {
@@ -172,8 +191,18 @@ func (s *Store) SaveTask(t Task) (Task, error) {
 	if t.Status == "" {
 		t.Status = "pending"
 	}
+	if e := resolveReminder(&t); e != nil {
+		return t, e
+	}
 	if e := validateTask(t); e != nil {
 		return t, e
+	}
+	if t.CategoryID == 0 {
+		var e error
+		t.CategoryID, e = defaultCategory(tx)
+		if e != nil {
+			return t, e
+		}
 	}
 	if t.CategoryID != 0 {
 		if _, e := load[Category](tx, "categories", t.CategoryID); e != nil {
@@ -210,6 +239,7 @@ func (s *Store) SaveTask(t Task) (Task, error) {
 		t.CreatedAt = old.CreatedAt
 		t.DeletedAt = old.DeletedAt
 		t.SortOrder = old.SortOrder
+		t.TodayDate = old.TodayDate
 		t.DoneAt = old.DoneAt
 		t.NotifiedAt = old.NotifiedAt
 		t.Version++
@@ -220,6 +250,8 @@ func (s *Store) SaveTask(t Task) (Task, error) {
 			if t.Status == "pending" {
 				t.DoneAt = ""
 				t.ReminderAt = ""
+				t.ReminderMode = ""
+				t.ReminderTime = ""
 				t.NotifiedAt = ""
 			} else {
 				t.DoneAt = ISO(s.now())
@@ -245,6 +277,8 @@ func (s *Store) SetState(id int64, state string) error {
 		if state == "pending" {
 			t.DoneAt = ""
 			t.ReminderAt = ""
+			t.ReminderMode = ""
+			t.ReminderTime = ""
 			t.NotifiedAt = ""
 		}
 	case "trash":
@@ -299,6 +333,22 @@ func (s *Store) SaveCategory(c Category) (Category, error) {
 	if !validColor(c.TextColor) {
 		return c, errors.New("文字色が不正です")
 	}
+	if c.ID != 0 {
+		old, e := load[Category](tx, "categories", c.ID)
+		if e != nil {
+			return c, e
+		}
+		c.SortOrder = old.SortOrder
+	}
+	if c.ID != 0 && c.Dormant {
+		first, e := defaultCategory(tx)
+		if e != nil {
+			return c, e
+		}
+		if first == c.ID {
+			return c, errors.New("先頭のカテゴリは標準追加先のため非表示にできません")
+		}
+	}
 	if c.ID == 0 {
 		r, e := tx.Exec("INSERT INTO categories(data) VALUES('{}')")
 		if e != nil {
@@ -331,13 +381,34 @@ func (s *Store) DeleteCategory(id int64) error {
 		return e
 	}
 	defer tx.Rollback()
+	cs, e := orderedCategories(tx)
+	if e != nil {
+		return e
+	}
+	if len(cs) <= 1 {
+		return errors.New("カテゴリは最低1個必要です")
+	}
+	if _, e = load[Category](tx, "categories", id); e != nil {
+		return e
+	}
+	var target Category
+	for _, c := range cs {
+		if c.ID != id {
+			target = c
+			break
+		}
+	}
+	target.Dormant = false
+	if e = put(tx, "categories", target.ID, target); e != nil {
+		return e
+	}
 	ts, e := list[Task](tx, "tasks")
 	if e != nil {
 		return e
 	}
 	for _, t := range ts {
 		if t.CategoryID == id {
-			t.CategoryID = 0
+			t.CategoryID = target.ID
 			t.Version++
 			if e = put(tx, "tasks", t.ID, t); e != nil {
 				return e
@@ -350,7 +421,7 @@ func (s *Store) DeleteCategory(id int64) error {
 	}
 	for _, v := range ss {
 		if v.CategoryID == id {
-			v.CategoryID = 0
+			v.CategoryID = target.ID
 			v.Version++
 			if e = put(tx, "series", v.ID, v); e != nil {
 				return e
@@ -362,9 +433,21 @@ func (s *Store) DeleteCategory(id int64) error {
 	}
 	return tx.Commit()
 }
-func (s *Store) SaveSettings(v Settings) error {
+func (s *Store) ValidateSettings(v Settings) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return validateSettings(s.db, v)
+}
+func validateSettings(q queryer, v Settings) error {
+	if _, _, e := ParseShortcut(v.QuickShortcut); e != nil {
+		return e
+	}
+	if _, e := time.Parse("15:04", v.ReminderDefaultTime); e != nil {
+		return errors.New("通知の既定時刻を指定してください")
+	}
+	if v.SuggestMinCount < 0 || v.SuggestMinCount > 100 {
+		return errors.New("候補の最低登録回数は0〜100で指定してください")
+	}
 	if v.Theme != "" && v.Theme != "light" && v.Theme != "dark" && v.Theme != "system" {
 		return errors.New("配色設定が不正です")
 	}
@@ -376,7 +459,7 @@ func (s *Store) SaveSettings(v Settings) error {
 			return errors.New("カスタム配色が不正です")
 		}
 	}
-	all, e := list[Series](s.db, "series")
+	all, e := list[Series](q, "series")
 	if e != nil {
 		return e
 	}
@@ -399,6 +482,14 @@ func (s *Store) SaveSettings(v Settings) error {
 		if _, e := ParseTime(v.PauseUntil, time.Local); e != nil {
 			return e
 		}
+	}
+	return nil
+}
+func (s *Store) SaveSettings(v Settings) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if e := validateSettings(s.db, v); e != nil {
+		return e
 	}
 	b, e := json.Marshal(v)
 	if e != nil {

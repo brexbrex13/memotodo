@@ -59,7 +59,7 @@ func main() {
 	})
 	ico, _ := assets.ReadFile("internal/tray/icon.ico")
 	width, height := store.WindowSize()
-	service.main = service.desktop.Window.NewWithOptions(application.WebviewWindowOptions{Name: "board", Title: "MemoTodo", Width: width, Height: height, MinWidth: 360, MinHeight: 420, Frameless: true, MinimiseButtonState: application.ButtonHidden, MaximiseButtonState: application.ButtonHidden, URL: "/", BackgroundColour: application.NewRGB(247, 246, 241)})
+	service.main = service.desktop.Window.NewWithOptions(application.WebviewWindowOptions{Name: "board", Title: "MemoTodo", Width: width, Height: height, MinWidth: 360, MinHeight: 420, Frameless: true, Windows: application.WindowsWindow{NonClientRegionSupport: true}, MinimiseButtonState: application.ButtonHidden, MaximiseButtonState: application.ButtonHidden, URL: "/", BackgroundColour: application.NewRGB(247, 246, 241)})
 	service.notice = service.desktop.Window.NewWithOptions(application.WebviewWindowOptions{Name: "notifications", Title: "MemoTodo 通知", Width: 360, Height: 170, Hidden: true, Frameless: true, AlwaysOnTop: true, DisableResize: true, URL: "/?window=notifications", Windows: application.WindowsWindow{HiddenOnTaskbar: false, ExStyle: noticeStyle()}, BackgroundColour: application.NewRGB(247, 246, 241)})
 	service.main.RegisterHook(events.Common.WindowMaximise, func(ev *application.WindowEvent) { ev.Cancel() })
 	service.main.RegisterHook(events.Common.WindowClosing, func(ev *application.WindowEvent) {
@@ -77,12 +77,16 @@ func main() {
 	tray := service.desktop.SystemTray.New()
 	tray.SetIcon(ico)
 	service.mini = service.desktop.Window.NewWithOptions(application.WebviewWindowOptions{Name: "quick-add", Title: "MemoTodo タスク追加", Width: 360, Height: 105, Hidden: true, Frameless: true, AlwaysOnTop: true, DisableResize: true, URL: "/?window=quick-add", Windows: application.WindowsWindow{HiddenOnTaskbar: true}, BackgroundColour: application.NewRGB(247, 246, 241)})
+	service.quickSuggestions = service.desktop.Window.NewWithOptions(application.WebviewWindowOptions{Name: "quick-suggestions", Title: "MemoTodo 入力候補", Width: 336, Height: 178, Hidden: true, Frameless: true, AlwaysOnTop: true, DisableResize: true, URL: "/?window=quick-suggestions", Windows: application.WindowsWindow{HiddenOnTaskbar: true, ExStyle: quickSuggestionStyle()}, BackgroundColour: application.NewRGB(247, 246, 241)})
 	service.mini.RegisterHook(events.Common.WindowClosing, func(ev *application.WindowEvent) {
 		if !service.quitting.Load() {
 			ev.Cancel()
-			service.mini.Hide()
+			service.HideQuickAdd()
 		}
 	})
+	service.mini.OnWindowEvent(events.Windows.WindowInactive, func(*application.WindowEvent) { service.quickLostFocus() })
+	service.mini.OnWindowEvent(events.Windows.WindowEndMove, func(*application.WindowEvent) { service.rememberQuickPosition() })
+	service.mini.OnWindowEvent(events.Windows.WindowEndResize, func(*application.WindowEvent) { service.rememberQuickPosition() })
 	tray.AttachWindow(service.mini).WindowOffset(8)
 	tray.SetTooltip("MemoTodo — クリックでタスク追加／ダブルクリックで一覧")
 	service.tray = tray
@@ -90,7 +94,7 @@ func main() {
 	tray.OnDoubleClick(service.trayDoubleClick)
 	menu := application.NewMenu()
 	menu.Add("ボードを開く").OnClick(func(*application.Context) { service.openMain(0) })
-	menu.Add("タスクを追加").OnClick(func(*application.Context) { tray.ShowWindow(); service.desktop.Event.Emit("board:mini-focus") })
+	menu.Add("タスクを追加").OnClick(func(*application.Context) { service.showQuickAdd() })
 	menu.AddSeparator()
 	menu.Add("終了（保存して終了）").OnClick(func(*application.Context) {
 		service.main.Show()
@@ -99,9 +103,24 @@ func main() {
 	tray.SetMenu(menu)
 	os.WriteFile(filepath.Join(dir, "notify_icon.png"), icon, 0644)
 	notify.Init(filepath.Join(dir, "notify_icon.png"), func() { service.openMain(0) })
-	service.desktop.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) { service.start(); startNativeVerification(service) })
+	service.desktop.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+		service.shortcut = newShortcutManager(service.showQuickAtCursor)
+		if v, e := store.Snapshot(); e == nil {
+			if e = service.shortcut.Change(v.Settings.QuickShortcut); e != nil {
+				service.settingsMu.Lock()
+				service.shortcutError = e.Error()
+				service.settingsMu.Unlock()
+				service.desktop.Event.Emit("board:error", e.Error())
+			}
+		}
+		service.start()
+		startNativeVerification(service)
+	})
 	service.desktop.OnShutdown(func() {
 		service.quitting.Store(true)
+		if service.shortcut != nil {
+			service.shortcut.Close()
+		}
 		service.stopOnce.Do(func() { close(service.stop) })
 		releaseNoticeNative()
 	})

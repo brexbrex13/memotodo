@@ -19,6 +19,7 @@ export function SeriesForm({
 }) {
   const [v, setV] = useState({
       ...initial,
+      category_id: initial.category_id || categories[0]?.id || 0,
       show_days: initial.show_days < 0 ? defaultShowDays : initial.show_days,
       due_time: "",
       end_date: "",
@@ -95,7 +96,6 @@ export function SeriesForm({
                   value={v.category_id}
                   onChange={(e) => patch({ category_id: +e.target.value })}
                 >
-                  <option value={0}>未分類</option>
                   {categories.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}

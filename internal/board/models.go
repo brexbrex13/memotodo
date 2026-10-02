@@ -3,23 +3,26 @@ package board
 import "time"
 
 type Task struct {
-	ID         int64  `json:"id"`
-	Version    int    `json:"version"`
-	Title      string `json:"title"`
-	Memo       string `json:"memo"`
-	Status     string `json:"status"`
-	Deadline   string `json:"deadline"`
-	ReminderAt string `json:"reminder_at"`
-	NotifiedAt string `json:"notified_at"`
-	CategoryID int64  `json:"category_id"`
-	Important  bool   `json:"important"`
-	SortOrder  int64  `json:"sort_order"`
-	CreatedAt  string `json:"created_at"`
-	DoneAt     string `json:"done_at"`
-	DeletedAt  string `json:"deleted_at"`
-	SeriesID   int64  `json:"series_id"`
-	Occurrence string `json:"occurrence"`
-	NearDays   int    `json:"near_days"`
+	ID           int64  `json:"id"`
+	Version      int    `json:"version"`
+	Title        string `json:"title"`
+	Memo         string `json:"memo"`
+	Status       string `json:"status"`
+	Deadline     string `json:"deadline"`
+	ReminderAt   string `json:"reminder_at"`
+	ReminderMode string `json:"reminder_mode"`
+	ReminderTime string `json:"reminder_time"`
+	TodayDate    string `json:"today_date"`
+	NotifiedAt   string `json:"notified_at"`
+	CategoryID   int64  `json:"category_id"`
+	Important    bool   `json:"important"`
+	SortOrder    int64  `json:"sort_order"`
+	CreatedAt    string `json:"created_at"`
+	DoneAt       string `json:"done_at"`
+	DeletedAt    string `json:"deleted_at"`
+	SeriesID     int64  `json:"series_id"`
+	Occurrence   string `json:"occurrence"`
+	NearDays     int    `json:"near_days"`
 }
 type Category struct {
 	ID        int64  `json:"id"`
@@ -69,21 +72,24 @@ type Notification struct {
 	Acknowledged bool   `json:"acknowledged"`
 }
 type Settings struct {
-	Theme          string        `json:"theme"`
-	SeriesShowDays int           `json:"series_show_days"`
-	CustomColors   []ColorPreset `json:"custom_colors"`
-	NearDays       int           `json:"near_days"`
-	Workdays       bool          `json:"workdays"`
-	NotifyTimes    []string      `json:"notify_times"`
-	NotifyWeekdays []int         `json:"notify_weekdays"`
-	Sound          bool          `json:"sound"`
-	NativeToast    bool          `json:"native_toast"`
-	Private        bool          `json:"private"`
-	PauseUntil     string        `json:"pause_until"`
-	FontSize       int           `json:"font_size"`
-	Compact        bool          `json:"compact"`
-	Collapsed      []int64       `json:"collapsed"`
-	Monitor        string        `json:"monitor"` // active, primary, screen ID
+	ReminderDefaultTime string        `json:"reminder_default_time"`
+	QuickShortcut       string        `json:"quick_shortcut"`
+	SuggestMinCount     int           `json:"suggest_min_count"`
+	Theme               string        `json:"theme"`
+	SeriesShowDays      int           `json:"series_show_days"`
+	CustomColors        []ColorPreset `json:"custom_colors"`
+	NearDays            int           `json:"near_days"`
+	Workdays            bool          `json:"workdays"`
+	NotifyTimes         []string      `json:"notify_times"`
+	NotifyWeekdays      []int         `json:"notify_weekdays"`
+	Sound               bool          `json:"sound"`
+	NativeToast         bool          `json:"native_toast"`
+	Private             bool          `json:"private"`
+	PauseUntil          string        `json:"pause_until"`
+	FontSize            int           `json:"font_size"`
+	Compact             bool          `json:"compact"`
+	Collapsed           []int64       `json:"collapsed"`
+	Monitor             string        `json:"monitor"` // active, primary, screen ID
 }
 type Snapshot struct {
 	Tasks         []Task         `json:"tasks"`
@@ -94,7 +100,7 @@ type Snapshot struct {
 }
 
 func Defaults() Settings {
-	return Settings{SeriesShowDays: 7, CustomColors: []ColorPreset{}, NearDays: 3, Workdays: true, NotifyTimes: []string{"13:00", "17:00"}, NotifyWeekdays: []int{1, 2, 3, 4, 5}, Sound: true, FontSize: 14, Collapsed: []int64{}, Monitor: "active"}
+	return Settings{ReminderDefaultTime: "09:00", QuickShortcut: "Ctrl+Alt+N", SuggestMinCount: 3, SeriesShowDays: 7, CustomColors: []ColorPreset{}, NearDays: 3, Workdays: true, NotifyTimes: []string{"13:00", "17:00"}, NotifyWeekdays: []int{1, 2, 3, 4, 5}, Sound: true, FontSize: 14, Collapsed: []int64{}, Monitor: "active"}
 }
 func ISO(t time.Time) string  { return t.Format("2006-01-02T15:04:05") }
 func Date(t time.Time) string { return t.Format("2006-01-02") }

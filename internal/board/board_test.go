@@ -220,7 +220,7 @@ func TestVersionConflictCategoryTrashAndOrder(t *testing.T) {
 	s.SetState(a.ID, "restore")
 	s.DeleteCategory(c.ID)
 	v := snap(t, s)
-	if v.Tasks[0].Title != "changed" || v.Tasks[0].CategoryID != 0 || v.Tasks[0].DeletedAt != "" {
+	if v.Tasks[0].Title != "changed" || v.Tasks[0].CategoryID != v.Categories[0].ID || v.Tasks[0].DeletedAt != "" {
 		t.Fatal(v.Tasks)
 	}
 }
@@ -451,10 +451,10 @@ func TestCategoryDormancyOrderMovementAndWindowSize(t *testing.T) {
 	if len(snap(t, s).Notifications) != 1 {
 		t.Fatal("dormancy suppressed notification")
 	}
-	if e = s.ReorderCategories([]int64{b.ID, a.ID}); e != nil {
+	if e = s.ReorderCategories([]int64{b.ID, a.ID, snap(t, s).Categories[0].ID}); e != nil {
 		t.Fatal(e)
 	}
-	if snap(t, s).Categories[0].SortOrder != 1 {
+	if snap(t, s).Categories[0].SortOrder != 2 {
 		t.Fatal(snap(t, s).Categories)
 	}
 	if e = s.MoveTask(task.ID, b.ID); e != nil {

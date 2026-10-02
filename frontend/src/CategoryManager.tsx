@@ -130,7 +130,10 @@ export function CategoryManager({
                 <input
                   type="checkbox"
                   checked={!c.dormant}
-                  disabled={busy}
+                  disabled={busy || i === 0}
+                  data-tip={
+                    i === 0 ? "先頭は標準追加先のため常に表示します" : undefined
+                  }
                   onChange={(e) =>
                     void save({ ...c, dormant: !e.target.checked })
                   }
@@ -180,12 +183,12 @@ export function CategoryManager({
               <button
                 className="danger"
                 aria-label={c.name + "を削除"}
-                data-tip="タスクは未分類へ移動します"
-                disabled={busy}
+                data-tip="タスクと定期設定は残るカテゴリの先頭へ移動します"
+                disabled={busy || categories.length === 1}
                 onClick={() => {
                   if (
                     confirm(
-                      "このカテゴリを削除しますか？タスクと定期設定は未分類へ移動します。",
+                      "このカテゴリを削除しますか？タスクと定期設定は残るカテゴリの先頭へ移動します。",
                     )
                   )
                     void run(() => api("DeleteCategory", c.id));

@@ -147,7 +147,7 @@ test("new recurring default is editable; tray input registers independently", as
   await page.goto("/");
   await menu(page, "設定");
   await page
-    .getByLabel("新規定期タスクの追加日数（初期値）", { exact: true })
+    .getByLabel("タスクリストへ追加する日数（期限の何日前）", { exact: true })
     .fill("12");
   await page.getByRole("button", { name: "今すぐ保存", exact: true }).click();
   await menu(page, "定期設定");

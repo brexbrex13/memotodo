@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "./api";
+import { ShortcutField } from "./ShortcutField";
 import { Settings } from "./types";
 export function SettingsForm({
   initial,
@@ -15,7 +16,13 @@ export function SettingsForm({
   const [v, setV] = useState(initial),
     [times, setTimes] = useState(initial.notify_times.join(", ")),
     [busy, setBusy] = useState(false),
-    [backup, setBackup] = useState("");
+    [backup, setBackup] = useState(""),
+    [saveError, setSaveError] = useState("");
+  useEffect(() => {
+    void api<string>("GetShortcutStatus")
+      .then((e) => setSaveError(e || ""))
+      .catch(onError);
+  }, []);
   const patch = (p: Partial<Settings>) => setV((x) => ({ ...x, ...p }));
   return (
     <div className="overlay">
@@ -27,9 +34,22 @@ export function SettingsForm({
           </button>
         </header>
         <div className="modal-body">
-          <div className="formgrid">
+          <div className="formgrid settings-groups">
+            <h3 className="wide">通常タスク</h3>
             <label>
-              新規定期タスクの追加日数（初期値）
+              入力候補に出す登録回数
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={v.suggest_min_count ?? 3}
+                data-tip="手動で登録したタスク名が候補になります。0で候補表示を無効にします。"
+                onChange={(e) => patch({ suggest_min_count: +e.target.value })}
+              />
+            </label>
+            <h3 className="wide">定期タスク</h3>
+            <label>
+              タスクリストへ追加する日数（期限の何日前）
               <input
                 type="number"
                 min={0}
@@ -38,8 +58,9 @@ export function SettingsForm({
                 onChange={(e) => patch({ series_show_days: +e.target.value })}
               />
             </label>
+            <h3 className="wide">期限表示</h3>
             <label>
-              期限が近いとする日数
+              「近日」に表示する日数
               <input
                 type="number"
                 min={0}
@@ -54,7 +75,19 @@ export function SettingsForm({
                 checked={v.workdays}
                 onChange={(e) => patch({ workdays: e.target.checked })}
               />
-              土日を除いて日数を数える
+              「近日」の日数から土日を除く
+            </label>
+            <h3 className="wide">通知</h3>
+            <label>
+              日付指定の通知時刻（初期値）
+              <input
+                type="time"
+                value={v.reminder_default_time || "09:00"}
+                onChange={(e) =>
+                  patch({ reminder_default_time: e.target.value })
+                }
+                data-tip="期限日・明日・来週・来月に適用。保存済みの通知時刻は変わりません。"
+              />
             </label>
             <label className="wide">
               まとめ通知の時刻（カンマ区切り・空欄でなし）
@@ -108,14 +141,6 @@ export function SettingsForm({
               通知内容を隠し、件数だけ表示
             </label>
             <label>
-              通知を保留する期限
-              <input
-                type="datetime-local"
-                value={v.pause_until.slice(0, 16)}
-                onChange={(e) => patch({ pause_until: e.target.value })}
-              />
-            </label>
-            <label>
               通知を表示する画面
               <select
                 value={v.monitor}
@@ -125,6 +150,19 @@ export function SettingsForm({
                 <option value="primary">メインディスプレイ</option>
               </select>
             </label>
+            <button
+              className="wide"
+              data-tip="保存済みの設定で通知をテストします"
+              onClick={() => void api("TestNotification").catch(onError)}
+            >
+              通知をテスト
+            </button>
+            <h3 className="wide">アプリ</h3>
+            <ShortcutField
+              value={v.quick_shortcut ?? "Ctrl+Alt+N"}
+              onChange={(quick_shortcut) => patch({ quick_shortcut })}
+            />
+            <h3 className="wide">表示</h3>
             <label>
               文字サイズ
               <input
@@ -143,13 +181,23 @@ export function SettingsForm({
               />
               一覧をコンパクトに表示
             </label>
+            <div
+              className={"wide density-preview" + (v.compact ? " compact" : "")}
+              aria-label="一覧表示のプレビュー"
+              style={{ fontSize: v.font_size }}
+            >
+              <div className="task-row">
+                <span>□</span>
+                <span>タスクの表示例</span>
+                <span>☆</span>
+              </div>
+              <div className="task-row">
+                <span>□</span>
+                <span>次のタスク</span>
+                <span>☆</span>
+              </div>
+            </div>
           </div>
-          <button
-            data-tip="保存済みの設定で通知をテストします"
-            onClick={() => void api("TestNotification").catch(onError)}
-          >
-            通知をテスト
-          </button>
           <h3>データとバックアップ</h3>
           <div className="actions">
             <button
@@ -164,55 +212,47 @@ export function SettingsForm({
             </button>
           </div>
           {backup && <p className="path">保存しました：{backup}</p>}
-          <label>
-            バックアップZIPから復元（50MBまで）
-            <input
-              type="file"
-              accept=".zip"
-              disabled={busy}
-              onChange={async (e) => {
-                const f = e.target.files?.[0];
-                e.target.value = "";
-                if (!f) return;
-                if (f.size > 50 * 1024 * 1024) {
-                  onError("バックアップは50MB以内にしてください");
-                  return;
-                }
-                if (
-                  !confirm(
-                    "現在の付箋・設定を、このバックアップの内容に戻します。現在のデータは先にバックアップします。復元しますか？",
-                  )
+          <button
+            disabled={busy}
+            onClick={async () => {
+              if (
+                !confirm(
+                  "現在のタスク・設定をバックアップの内容に戻します。現在のデータは先にバックアップします。復元しますか？",
                 )
-                  return;
-                setBusy(true);
-                try {
-                  const encoded = await new Promise<string>(
-                    (resolve, reject) => {
-                      const r = new FileReader();
-                      r.onload = () => resolve(String(r.result).split(",")[1]);
-                      r.onerror = reject;
-                      r.readAsDataURL(f);
-                    },
-                  );
-                  await api("RestoreBackup", encoded);
+              )
+                return;
+              setBusy(true);
+              setSaveError("");
+              try {
+                const restored = await api<boolean>("RestoreBackupFile");
+                if (restored) {
                   localStorage.clear();
                   onSaved();
                   onClose();
-                } catch (e) {
-                  onError(e);
-                } finally {
-                  setBusy(false);
                 }
-              }}
-            />
-          </label>
+              } catch (e) {
+                setSaveError(String(e));
+                onError(e);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            バックアップZIPから復元
+          </button>
         </div>
         <footer>
+          {saveError && (
+            <p role="alert" className="danger">
+              {saveError}
+            </p>
+          )}
           <button
             disabled={busy}
             className="primary"
             onClick={async () => {
               setBusy(true);
+              setSaveError("");
               try {
                 await api("SaveSettings", {
                   ...v,
@@ -224,6 +264,7 @@ export function SettingsForm({
                 onSaved();
                 onClose();
               } catch (e) {
+                setSaveError(String(e));
                 onError(e);
               } finally {
                 setBusy(false);

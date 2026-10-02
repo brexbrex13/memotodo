@@ -66,12 +66,27 @@ func (s *Store) ReorderCategories(ids []int64) error {
 		return e
 	}
 	defer tx.Rollback()
+	cs, e := orderedCategories(tx)
+	if e != nil {
+		return e
+	}
+	if len(ids) != len(cs) {
+		return errors.New("すべてのカテゴリを指定してください")
+	}
+	seen := map[int64]bool{}
 	for i, id := range ids {
+		if seen[id] {
+			return errors.New("カテゴリが重複しています")
+		}
+		seen[id] = true
 		c, e := load[Category](tx, "categories", id)
 		if e != nil {
 			return e
 		}
 		c.SortOrder = i
+		if i == 0 {
+			c.Dormant = false
+		}
 		if e = put(tx, "categories", id, c); e != nil {
 			return e
 		}
@@ -81,6 +96,13 @@ func (s *Store) ReorderCategories(ids []int64) error {
 func (s *Store) MoveTask(id, categoryID int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if categoryID == 0 {
+		var e error
+		categoryID, e = defaultCategory(s.db)
+		if e != nil {
+			return e
+		}
+	}
 	if categoryID != 0 {
 		if _, e := load[Category](s.db, "categories", categoryID); e != nil {
 			return e

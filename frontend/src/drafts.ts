@@ -4,6 +4,8 @@ export const editable = [
   "memo",
   "deadline",
   "reminder_at",
+  "reminder_mode",
+  "reminder_time",
   "category_id",
   "important",
 ] as const;

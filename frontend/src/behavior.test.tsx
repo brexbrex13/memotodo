@@ -48,7 +48,15 @@ beforeEach(() => {
   localStorage.clear();
   snapshot = {
     tasks: [],
-    categories: [],
+    categories: [
+      {
+        id: 1,
+        name: "未分類",
+        color: "#fffdf8",
+        text_color: "#302d25",
+        sort_order: 0,
+      },
+    ],
     series: [],
     notifications: [],
     settings: defaults,
@@ -86,9 +94,9 @@ describe("sticky board and notification semantics", () => {
   });
   it("keeps deadline band separate from manual board order", async () => {
     snapshot.tasks = [
-      { ...emptyTask(), id: 1, title: "期限なしの付箋", sort_order: 0 },
+      { ...emptyTask(1), id: 1, title: "期限なしの付箋", sort_order: 0 },
       {
-        ...emptyTask(),
+        ...emptyTask(1),
         id: 2,
         title: "期限切れ",
         deadline: "2000-01-01",
@@ -105,7 +113,7 @@ describe("sticky board and notification semantics", () => {
     );
   });
   it("acknowledges notification without completing task", async () => {
-    snapshot.tasks = [{ ...emptyTask(), id: 1, title: "確認と完了は別" }];
+    snapshot.tasks = [{ ...emptyTask(1), id: 1, title: "確認と完了は別" }];
     snapshot.notifications = [
       {
         id: 7,
@@ -118,12 +126,14 @@ describe("sticky board and notification semantics", () => {
       },
     ];
     render(<Notifications />);
-    fireEvent.click(await screen.findByRole("button", { name: "通知を閉じる" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "通知を閉じる" }),
+    );
     await waitFor(() => expect(api).toHaveBeenCalledWith("Acknowledge", 7));
     expect(api).not.toHaveBeenCalledWith("SetState", 1, "done");
   });
   it("flushes draft before closing and retains it after failure", async () => {
-    const task = { ...emptyTask(), id: 3, version: 1, title: "要件" };
+    const task = { ...emptyTask(1), id: 3, version: 1, title: "要件" };
     const close = vi.fn(),
       error = vi.fn();
     const handle = createRef<DraftHandle>();
@@ -150,7 +160,7 @@ describe("sticky board and notification semantics", () => {
     expect(localStorage.getItem("draft:3")).toBeNull();
   });
   it("uses end of day and workday-based near deadlines", () => {
-    const task = { ...emptyTask(), deadline: "2026-10-05" };
+    const task = { ...emptyTask(1), deadline: "2026-10-05" };
     expect(
       urgency(
         task,
@@ -176,7 +186,7 @@ describe("sticky board and notification semantics", () => {
 describe("draft conflict resolution", () => {
   it("preserves snooze and completion from notification window while saving memo", async () => {
     const { mergeDraft } = await import("./drafts");
-    const base = { ...emptyTask(), id: 1, version: 1, title: "x" };
+    const base = { ...emptyTask(1), id: 1, version: 1, title: "x" };
     const draft = { ...base, memo: "updated memo" };
     const latest = {
       ...base,
@@ -194,7 +204,7 @@ describe("draft conflict resolution", () => {
   });
   it("rejects concurrent edits of same field", async () => {
     const { mergeDraft } = await import("./drafts");
-    const base = { ...emptyTask(), title: "x" };
+    const base = { ...emptyTask(1), title: "x" };
     expect(() =>
       mergeDraft(base, { ...base, memo: "a" }, { ...base, memo: "b" }),
     ).toThrow("同じ項目");
