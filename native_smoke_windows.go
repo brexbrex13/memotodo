@@ -173,12 +173,12 @@ func checkQuickDropdown(a *App, foreground uintptr) error {
 	if active != h {
 		return fmt.Errorf("suggestions stole input focus")
 	}
-	a.quickSuggestions.ExecJS(`(()=>{const b=document.querySelector('button');if(!b)return;const r=b.getBoundingClientRect();fetch('/wails/runtime?object=0&method=0&args='+encodeURIComponent(JSON.stringify({'call-id':'native-suggestion-click',methodName:'main.App.SmokeTarget',args:[r.x+r.width/2,r.y+r.height/2]})))})()`)
+	a.quickSuggestions.ExecJS(`(()=>{const until=Date.now()+5000;const probe=()=>{const b=document.querySelector('button');if(!b){if(Date.now()<until)setTimeout(probe,50);return;}const r=b.getBoundingClientRect();fetch('/wails/runtime?object=0&method=0&args='+encodeURIComponent(JSON.stringify({'call-id':'native-suggestion-click',methodName:'main.App.SmokeTarget',args:[r.x+r.width/2,r.y+r.height/2]})))};probe()})()`)
 	var p [2]float64
 	select {
 	case p = <-smokePoint:
 	case <-time.After(5 * time.Second):
-		return fmt.Errorf("suggestion renderer not ready")
+		return fmt.Errorf("suggestion renderer not ready: %+v", a.GetQuickSuggestions())
 	}
 	ph := uintptr(a.quickSuggestions.NativeWindow())
 	dpi, _, _ := user32.NewProc("GetDpiForWindow").Call(ph)
