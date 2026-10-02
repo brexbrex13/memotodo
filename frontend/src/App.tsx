@@ -464,16 +464,21 @@ export default function App() {
       )
         suggest.blur();
     };
+    const finishPointer = () => {
+      quickPointer.current = false;
+    };
     const cancelPointer = () => {
       quickPointer.current = false;
       suggest.blur();
     };
     document.addEventListener("pointerdown", click);
+    document.addEventListener("pointerup", finishPointer);
     document.addEventListener("click", release);
     document.addEventListener("pointercancel", cancelPointer);
     window.addEventListener("keydown", key);
     return () => {
       document.removeEventListener("pointerdown", click);
+      document.removeEventListener("pointerup", finishPointer);
       document.removeEventListener("click", release);
       document.removeEventListener("pointercancel", cancelPointer);
       window.removeEventListener("keydown", key);

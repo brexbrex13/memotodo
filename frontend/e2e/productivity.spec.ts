@@ -530,6 +530,12 @@ test("main suggestions require explicit input and never cover the task list afte
   const list = page.locator(".quick .task-suggestions");
   await expect(list).toBeVisible();
   await expect(list.getByRole("option")).toHaveCount(5);
+  await input.dispatchEvent("pointerdown", { button: 2 });
+  await input.dispatchEvent("pointerup", { button: 2 });
+  await input.press("Shift+Tab");
+  await expect(list).toHaveCount(0);
+  await input.click();
+  await expect(list).toBeVisible();
   const listBox = await list.boundingBox();
   const filtersBox = await page.locator(".filters").boundingBox();
   expect(listBox!.y + listBox!.height).toBeLessThanOrEqual(filtersBox!.y);
