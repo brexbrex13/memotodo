@@ -98,12 +98,7 @@ export function QuickAdd() {
       setBusy(false);
       addLock.current = false;
       requestAnimationFrame(() => {
-        if (
-          document.hasFocus() &&
-          (document.activeElement === input.current ||
-            document.activeElement === document.body)
-        )
-          input.current?.focus();
+        if (document.hasFocus()) input.current?.focus();
       });
     }
   };
@@ -178,6 +173,35 @@ export function QuickAdd() {
             />
             重要
           </label>
+          <div className="mini-actions">
+            <button
+              disabled={busy}
+              data-tip="入力中の内容を消去"
+              aria-label="入力中の内容を削除"
+              onClick={() => {
+                setText("");
+                setOptions({
+                  deadline: "",
+                  reminder_at: "",
+                  reminder_mode: "",
+                  reminder_time: "",
+                  important: false,
+                });
+                setError("");
+                suggest.reset();
+                input.current?.focus();
+              }}
+            >
+              <Icon name="trash" />
+            </button>
+            <button
+              className="primary"
+              disabled={busy || !text.trim()}
+              onClick={() => void add()}
+            >
+              登録
+            </button>
+          </div>
         </div>
       )}
       {error && <p role="alert">{error}</p>}

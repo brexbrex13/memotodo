@@ -230,8 +230,7 @@ func (a *App) refreshNotice() {
 				a.noticeWindows[n.ID] = w
 			}
 		}
-		w.SetSize(width, height)
-		w.SetPosition(screen.WorkArea.X+screen.WorkArea.Width-width-12-column*452, screen.WorkArea.Y+screen.WorkArea.Height-height-12-offset)
+		w.SetBounds(application.Rect{X: screen.WorkArea.X + screen.WorkArea.Width - width - 12 - column*452, Y: screen.WorkArea.Y + screen.WorkArea.Height - height - 12 - offset, Width: width, Height: height})
 		if i == 0 {
 			if !a.noticeVisible {
 				showNotice(w)
@@ -345,6 +344,39 @@ func (a *App) StopSeries(id int64) error {
 	}
 	return e
 }
+
+// Change only the category display preference, without overwriting settings drafts.
+func (a *App) SetCategoryCollapsed(id int64, collapsed bool) error {
+	a.settingsMu.Lock()
+	defer a.settingsMu.Unlock()
+	v, err := a.store.Snapshot()
+	if err != nil {
+		return err
+	}
+	ids := make([]int64, 0, len(v.Settings.Collapsed)+1)
+	found := false
+	for _, c := range v.Categories {
+		if c.ID == id {
+			found = true
+			break
+		}
+	}
+	for _, existing := range v.Settings.Collapsed {
+		if existing != id {
+			ids = append(ids, existing)
+		}
+	}
+	if collapsed && found {
+		ids = append(ids, id)
+	}
+	v.Settings.Collapsed = ids
+	if err = a.store.SaveSettings(v.Settings); err != nil {
+		return err
+	}
+	a.changed()
+	return nil
+}
+
 func (a *App) SaveSettings(v board.Settings) error {
 	a.settingsMu.Lock()
 	defer a.settingsMu.Unlock()

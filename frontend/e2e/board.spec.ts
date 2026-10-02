@@ -248,7 +248,7 @@ test("memo links, pasted images and editor height survive save and reopen", asyn
     .locator(".memo-editor")
     .evaluate((el) => ((el as HTMLElement).style.height = "310px"));
   await expect
-    .poll(() => page.evaluate(() => localStorage.getItem("memo-height")))
+    .poll(() => page.evaluate(() => localStorage.getItem("memo-height-small")))
     .toBe("310");
   const frameBox = await page.locator(".memo-editor").boundingBox();
   const editingBox = await memo.boundingBox();

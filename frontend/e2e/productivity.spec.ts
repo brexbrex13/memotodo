@@ -260,7 +260,7 @@ test("notification pause accepts relative periods and can be cleared; shortcut o
     .toBe("");
 });
 
-test("status filters seed new tasks, history reopens inline, search expands in-place", async ({
+test("status filters seed new tasks, history reopens inline, search opens an anchored popup", async ({
   page,
 }) => {
   await page.goto("/");
@@ -299,8 +299,8 @@ test("status filters seed new tasks, history reopens inline, search expands in-p
   const search = page.getByRole("textbox", { name: "検索語", exact: true });
   await search.fill("今日と重要");
   const controls = page.getByLabel("タスクの絞り込み");
-  expect((await search.boundingBox())!.y).toBeLessThan(
-    (await controls.boundingBox())!.y + 40,
+  expect((await search.boundingBox())!.y).toBeGreaterThan(
+    (await controls.boundingBox())!.y,
   );
   await input.click();
   await expect(search).toHaveCount(0);
@@ -327,7 +327,7 @@ test("mini input clock preserves custom selection and saves deadline and notific
   await mini.getByLabel("通知時刻", { exact: true }).fill("2099-10-02T10:30");
   await mini.getByLabel("重要", { exact: true }).check();
   await mini.screenshot({ path: "test-results/mini-options.png" });
-  await input.press("Enter");
+  await mini.getByRole("button", { name: "登録", exact: true }).click();
   await expect(input).toHaveValue("");
   await expect(input).toBeFocused();
   const snapshot = await service(page, "GetSnapshot");
@@ -339,4 +339,95 @@ test("mini input clock preserves custom selection and saves deadline and notific
     reminder_at: "2099-10-02T10:30",
   });
   await mini.close();
+});
+
+test("category collapse persists and notification opening expands it; closing resets draft and filters", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const input = page.getByLabel("新しい付箋");
+  await expect(input).toBeVisible();
+  const task = await create(page, "折り畳み検証");
+  const snap = await service(page, "GetSnapshot");
+  const category = snap.categories.find((c: any) => c.id === task.category_id);
+  const group = page.getByRole("region", { name: category.name, exact: true });
+  await expect(group.getByText("折り畳み検証", { exact: true })).toBeVisible();
+  await group
+    .getByRole("button", { name: category.name + "を折り畳む", exact: true })
+    .click();
+  await expect(group.getByText("折り畳み検証", { exact: true })).toHaveCount(0);
+  await page.reload();
+  await expect(
+    page.locator("section.category button.category-caption").first(),
+  ).toHaveAttribute("aria-expanded", "false");
+  await service(page, "OpenTask", task.id);
+  await expect(page.getByLabel("タスク名")).toBeVisible();
+  await expect(
+    page.locator("section.category button.category-caption").first(),
+  ).toHaveAttribute("aria-expanded", "true");
+  await page.getByRole("button", { name: "詳細を閉じる", exact: true }).click();
+  await page.getByRole("button", { name: "今日やる", exact: true }).click();
+  await page.getByRole("button", { name: "重要", exact: true }).click();
+  await input.fill("破棄する入力");
+  await page.getByRole("button", { name: "検索", exact: true }).click();
+  const search = page.getByLabel("検索語", { exact: true });
+  await search.fill("検索中");
+  await search.dispatchEvent("keydown", {
+    key: "Enter",
+    keyCode: 229,
+    isComposing: true,
+  });
+  await expect(search).toBeVisible();
+  await page.getByLabel("トレイに格納").click();
+  await expect(input).toHaveValue("");
+  await expect(
+    page.getByRole("button", { name: "全て", exact: true }),
+  ).toHaveClass(/active/);
+  await expect(
+    page.getByRole("button", { name: "今日やる", exact: true }),
+  ).toHaveAttribute("aria-pressed", "false");
+  await expect(
+    page.getByRole("button", { name: "重要", exact: true }),
+  ).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByLabel("検索を解除")).toHaveCount(0);
+});
+
+test("memo inserts unselected links and recognizes quoted local paths; notification wheel requires focus", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.getByLabel("新しい付箋")).toBeVisible();
+  const task = await create(page, "リンクとホイール検証");
+  await page.getByText(task.title, { exact: true }).click();
+  const memo = page.getByRole("textbox", { name: "メモ", exact: true });
+  await memo.click();
+  page.once("dialog", (dialog) => dialog.accept("https://example.com/manual"));
+  await page.getByRole("button", { name: "リンク", exact: true }).click();
+  await expect(memo.locator("a")).toHaveText("https://example.com/manual");
+  await memo.press("End");
+  await memo.press("Enter");
+  await memo.evaluate((el) => {
+    const data = new DataTransfer();
+    data.setData("text/plain", String.raw`"C:\業務\資料.txt"`);
+    el.dispatchEvent(
+      new ClipboardEvent("paste", {
+        clipboardData: data,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  });
+  await expect(memo.locator('a[href^="file:///"]')).toHaveText(
+    String.raw`C:\業務\資料.txt`,
+  );
+  const notify = page.getByLabel("通知方法");
+  await notify.dispatchEvent("wheel", { deltaY: 120 });
+  await expect(notify).toHaveValue("off");
+  await notify.focus();
+  await notify.dispatchEvent("wheel", { deltaY: 120 });
+  await expect(notify).toHaveValue("tomorrow");
+  await notify.dispatchEvent("wheel", { deltaY: 120 });
+  await expect(notify).toHaveValue("30m");
+  await page.getByRole("button", { name: "詳細を閉じる", exact: true }).click();
+  await service(page, "SetState", task.id, "done");
 });

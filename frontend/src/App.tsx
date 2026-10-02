@@ -185,11 +185,15 @@ function Row({
 }
 function Group({
   c,
-  hideTitle,
+  collapsed,
+  toggle,
+  count,
   children,
 }: {
   c: Category;
-  hideTitle: boolean;
+  collapsed: boolean;
+  toggle: () => void;
+  count: number;
   children: React.ReactNode;
 }) {
   const drop = useDroppable({ id: "category:" + c.id });
@@ -200,8 +204,16 @@ function Group({
       style={{ background: c.color, color: c.text_color || "#302d25" }}
       aria-label={c.name}
     >
-      {!hideTitle && <div className="category-caption">{c.name}</div>}
-      {children}
+      <button
+        className="category-caption"
+        aria-label={c.name + (collapsed ? "を展開" : "を折り畳む")}
+        aria-expanded={!collapsed}
+        onClick={toggle}
+      >
+        <span aria-hidden="true">{collapsed ? "▸" : "▾"}</span> {c.name}
+        {collapsed && <span className="category-count">{count}</span>}
+      </button>
+      {!collapsed && children}
     </section>
   );
 }
@@ -236,7 +248,8 @@ export default function App() {
   useTheme(data?.settings.theme);
   const handle = useRef<DraftHandle | null>(null),
     quickRef = useRef<HTMLTextAreaElement>(null),
-    addLock = useRef(false);
+    addLock = useRef(false),
+    searchCompositionEnd = useRef(0);
   const suggest = useSuggestions(
     data?.tasks ?? [],
     quick,
@@ -273,10 +286,49 @@ export default function App() {
   const open = async (t: Task) => {
     try {
       await flush();
+      await api("SetCategoryCollapsed", t.category_id, false);
+      void reload();
       setPanel("");
       setDeadline("");
       setSelected(null);
       setTimeout(() => setSelected(t), 0);
+    } catch (e) {
+      report(e);
+    }
+  };
+  const resetOperation = () => {
+    setQuick("");
+    localStorage.removeItem("quick-draft");
+    setQuickOptions({
+      deadline: "",
+      reminder_at: "",
+      reminder_mode: "",
+      reminder_time: "",
+      important: false,
+    });
+    setQuickOptionsOpen(false);
+    suggest.reset();
+    setView("board");
+    setCategory(-1);
+    setTodayOnly(false);
+    setRecurringOnly(false);
+    setQuery("");
+    setSearch(false);
+    setImportant(false);
+    setDated(false);
+    setSelected(null);
+    setSeries(null);
+    setSettings(false);
+    setPanel("");
+    setMenu(false);
+    setDeadline("");
+    setError("");
+  };
+  const closeBoard = async (mode = "hide") => {
+    try {
+      await flush();
+      resetOperation();
+      await api("FinishClose", mode);
     } catch (e) {
       report(e);
     }
@@ -302,14 +354,21 @@ export default function App() {
           .then((v) => {
             setData(v);
             const t = v.tasks.find((x) => x.id === Number(id));
-            if (t) void open(t);
+            if (t) {
+              setView("board");
+              setCategory(-1);
+              setRecurringOnly(false);
+              setTodayOnly(false);
+              setQuery("");
+              setImportant(false);
+              setDated(false);
+              void open(t);
+            }
           })
           .catch(report);
       }),
       on("board:close-request", (mode) => {
-        void flush()
-          .then(() => api("FinishClose", String(mode)))
-          .catch(report);
+        void closeBoard(String(mode));
       }),
     ];
     const timer = setInterval(() => void reload(), 60000);
@@ -343,6 +402,7 @@ export default function App() {
       if (!target.closest(".deadline-popup,[data-deadline-trigger]"))
         setDeadline("");
       if (!target.closest(".quick")) setQuickOptionsOpen(false);
+      if (!target.closest(".inline-search")) setSearch(false);
     };
     const key = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.key === "n") {
@@ -358,6 +418,7 @@ export default function App() {
         setTimeout(() => document.getElementById("search")?.focus(), 0);
       }
       if (e.key === "Escape") {
+        setSearch(false);
         setMenu(false);
         setDeadline("");
         if (selected) void navigate(() => {});
@@ -586,11 +647,7 @@ export default function App() {
             className="icon"
             aria-label="トレイに格納"
             data-tip="トレイに格納"
-            onClick={() =>
-              void flush()
-                .then(() => api("FinishClose", "hide"))
-                .catch(report)
-            }
+            onClick={() => void closeBoard()}
           >
             ×
           </button>
@@ -910,7 +967,7 @@ export default function App() {
               <Icon name="star" filled={important} />
               重要
             </button>
-            <div className={"inline-search" + (search ? " expanded" : "")}>
+            <div className={"inline-search" + (query ? " active" : "")}>
               <button
                 aria-label="検索"
                 aria-expanded={search}
@@ -925,14 +982,37 @@ export default function App() {
                 <Icon name="search" />
               </button>
               {search && (
-                <input
-                  id="search"
-                  aria-label="検索語"
-                  placeholder="タスク・メモを検索"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  onBlur={() => setSearch(false)}
-                />
+                <div className="search-popover">
+                  <input
+                    id="search"
+                    aria-label="検索語"
+                    placeholder="タスク・メモを検索"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    onCompositionEnd={() => {
+                      searchCompositionEnd.current = Date.now();
+                    }}
+                    onKeyDown={(e) => {
+                      if (
+                        e.key === "Enter" &&
+                        !e.nativeEvent.isComposing &&
+                        e.keyCode !== 229 &&
+                        Date.now() - searchCompositionEnd.current > 80
+                      )
+                        setSearch(false);
+                    }}
+                  />
+                  <button
+                    aria-label="検索語を消去"
+                    disabled={!query}
+                    onClick={() => {
+                      setQuery("");
+                      document.getElementById("search")?.focus();
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
               )}
               {!search && query && (
                 <button
@@ -966,7 +1046,21 @@ export default function App() {
             {groups.map((c) => {
               const items = tasks.filter((t) => t.category_id === c.id);
               return (
-                <Group c={c} hideTitle={!todayOnly && category >= 0} key={c.id}>
+                <Group
+                  c={c}
+                  collapsed={(data.settings.collapsed || []).includes(c.id)}
+                  count={items.length}
+                  toggle={() =>
+                    void api(
+                      "SetCategoryCollapsed",
+                      c.id,
+                      !(data.settings.collapsed || []).includes(c.id),
+                    )
+                      .then(reload)
+                      .catch(report)
+                  }
+                  key={c.id}
+                >
                   <SortableContext
                     items={items.map((t) => t.id)}
                     strategy={verticalListSortingStrategy}
@@ -1331,6 +1425,8 @@ export function Notifications() {
                     あとで…
                   </option>
                   {[
+                    [5, "5分後"],
+                    [15, "15分後"],
                     [30, "30分後"],
                     [60, "1時間後"],
                     [360, "6時間後"],

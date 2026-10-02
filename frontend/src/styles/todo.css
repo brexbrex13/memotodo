@@ -566,7 +566,7 @@ fieldset legend {
 .memo-editor {
   resize: vertical;
   overflow: auto;
-  min-height: 140px;
+  min-height: 64px;
   max-height: 900px;
   border: 1px solid var(--border);
   border-top: 0;
@@ -1679,3 +1679,24 @@ button {
 .mini-add { overflow: auto; }
 .mini-options .check { display: flex; align-items: center; }
 .mini-add input[type="checkbox"] { width: auto; padding: 0; }
+
+/* Keep search anchored without shifting the filter controls. */
+.inline-search { position: relative; flex: 0 0 auto; }
+.inline-search.active > button:first-child { background: var(--hover); color: var(--today); }
+.search-popover { position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; width: min(320px, calc(100vw - 32px)); display: flex; gap: 4px; padding: 9px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); box-shadow: 0 8px 24px #0002; }
+.category-caption { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; color: inherit; background: transparent; border: 0; font-weight: 700; cursor: pointer; }
+.category-caption:hover { background: #00000008; }
+.category-count { margin-left: auto; font-size: .85em; font-weight: 500; }
+.mini-add, .mini-add header { --wails-draggable: drag; }
+.mini-add input, .mini-add button, .mini-add select, .mini-add label, .mini-options, .task-suggestions { --wails-draggable: no-drag; }
+.mini-actions { display: flex; gap: 8px; grid-column: 1 / -1; }
+.mini-actions .primary { flex: 1; }
+.density-preview { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.density-preview .task-row { display: flex; gap: 10px; }
+.density-preview .task-row span:nth-child(2) { flex: 1; }
+
+/* Leave a window edge outside native scrollbar hit regions. */
+.app { padding-right: 7px; }
+
+.category { margin: 10px 0; padding-top: 6px; }
+.category-caption { position: static; margin: -2px -4px 3px; width: calc(100% + 8px); padding: 3px 7px; background: inherit; font-size: 12px; }

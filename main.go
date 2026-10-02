@@ -59,7 +59,7 @@ func main() {
 	})
 	ico, _ := assets.ReadFile("internal/tray/icon.ico")
 	width, height := store.WindowSize()
-	service.main = service.desktop.Window.NewWithOptions(application.WebviewWindowOptions{Name: "board", Title: "MemoTodo", Width: width, Height: height, MinWidth: 360, MinHeight: 420, Frameless: true, MinimiseButtonState: application.ButtonHidden, MaximiseButtonState: application.ButtonHidden, URL: "/", BackgroundColour: application.NewRGB(247, 246, 241)})
+	service.main = service.desktop.Window.NewWithOptions(application.WebviewWindowOptions{Name: "board", Title: "MemoTodo", Width: width, Height: height, MinWidth: 360, MinHeight: 420, Frameless: true, Windows: application.WindowsWindow{NonClientRegionSupport: true}, MinimiseButtonState: application.ButtonHidden, MaximiseButtonState: application.ButtonHidden, URL: "/", BackgroundColour: application.NewRGB(247, 246, 241)})
 	service.notice = service.desktop.Window.NewWithOptions(application.WebviewWindowOptions{Name: "notifications", Title: "MemoTodo 通知", Width: 360, Height: 170, Hidden: true, Frameless: true, AlwaysOnTop: true, DisableResize: true, URL: "/?window=notifications", Windows: application.WindowsWindow{HiddenOnTaskbar: false, ExStyle: noticeStyle()}, BackgroundColour: application.NewRGB(247, 246, 241)})
 	service.main.RegisterHook(events.Common.WindowMaximise, func(ev *application.WindowEvent) { ev.Cancel() })
 	service.main.RegisterHook(events.Common.WindowClosing, func(ev *application.WindowEvent) {
@@ -84,6 +84,8 @@ func main() {
 		}
 	})
 	service.mini.OnWindowEvent(events.Windows.WindowInactive, func(*application.WindowEvent) { service.quickLostFocus() })
+	service.mini.OnWindowEvent(events.Windows.WindowEndMove, func(*application.WindowEvent) { service.rememberQuickPosition() })
+	service.mini.OnWindowEvent(events.Windows.WindowEndResize, func(*application.WindowEvent) { service.rememberQuickPosition() })
 	tray.AttachWindow(service.mini).WindowOffset(8)
 	tray.SetTooltip("MemoTodo — クリックでタスク追加／ダブルクリックで一覧")
 	service.tray = tray

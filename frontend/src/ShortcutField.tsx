@@ -2,8 +2,7 @@ export function shortcutWarning(value: string): string {
   const keys = value.split("+");
   const key = keys[keys.length - 1];
   const ctrl = keys.includes("Ctrl"),
-    alt = keys.includes("Alt"),
-    shift = keys.includes("Shift");
+    alt = keys.includes("Alt");
   // Microsoft Support: keyboard-shortcuts-in-word / keyboard-shortcuts-in-excel.
   const office = new Set([
     "Ctrl+Alt+N",
@@ -49,10 +48,17 @@ export function shortcutWarning(value: string): string {
   )
     return "WindowsやOffice等の標準操作と重なります。アプリが起動中はその操作より優先される場合があります。";
   if (
-    (alt && ["Tab", "F4", "Space", "Escape"].includes(key || "")) ||
-    (ctrl && key === "Escape") ||
-    (shift && ["Insert", "Delete"].includes(key || "")) ||
-    (ctrl && alt && key === "Delete")
+    new Set([
+      "Alt+Tab",
+      "Alt+F4",
+      "Alt+Space",
+      "Alt+Escape",
+      "Ctrl+Escape",
+      "Ctrl+Shift+Escape",
+      "Shift+Insert",
+      "Shift+Delete",
+      "Ctrl+Alt+Delete",
+    ]).has(value)
   )
     return "Windowsの標準操作に使われる組み合わせです。登録できない場合や標準操作を妨げる場合があります。";
   return "";

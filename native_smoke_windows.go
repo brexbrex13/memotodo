@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"golang.org/x/sys/windows"
+	"memotodo/internal/board"
 	"os"
 	"os/exec"
 	"runtime"
@@ -54,6 +55,75 @@ func (a *App) SmokeTarget(x, y float64) {
 	default:
 	}
 }
+func checkNoticeRectangles(a *App) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	windows := []*application.WebviewWindow{a.notice}
+	for _, w := range a.noticeWindows {
+		windows = append(windows, w)
+	}
+	type rect struct{ Left, Top, Right, Bottom int32 }
+	rects := []rect{}
+	for _, w := range windows {
+		hwnd := uintptr(w.NativeWindow())
+		visible, _, _ := user32.NewProc("IsWindowVisible").Call(hwnd)
+		if visible == 0 {
+			continue
+		}
+		var r rect
+		getWindowRect.Call(hwnd, uintptr(unsafe.Pointer(&r)))
+		for _, other := range rects {
+			if r.Top < other.Bottom && other.Top < r.Bottom && r.Left < other.Right && other.Left < r.Right {
+				return fmt.Errorf("visible notifications overlap: %v and %v", r, other)
+			}
+		}
+		rects = append(rects, r)
+	}
+	if len(rects) < 2 {
+		return fmt.Errorf("expected multiple visible notification rectangles, got %d", len(rects))
+	}
+	return nil
+}
+
+func checkRightEdgeResize(a *App) error {
+	for i := 0; i < 30; i++ {
+		if _, e := a.store.SaveTask(board.Task{Title: fmt.Sprintf("Resize probe %d", i)}); e != nil {
+			return e
+		}
+	}
+	a.desktop.Event.Emit("board:changed")
+	time.Sleep(800 * time.Millisecond)
+	a.main.ExecJS(`(()=>{const el=document.querySelector('.board-main');if(el)fetch('/wails/runtime?object=0&method=0&args='+encodeURIComponent(JSON.stringify({'call-id':'native-scroll-probe',methodName:'main.App.SmokeTarget',args:[el.scrollHeight,el.clientHeight]})))})()`)
+	select {
+	case p := <-smokePoint:
+		if p[0] <= p[1] {
+			return fmt.Errorf("resize probe did not produce a scrollbar")
+		}
+	case <-time.After(5 * time.Second):
+		return fmt.Errorf("resize probe renderer did not respond")
+	}
+	original := a.main.Bounds()
+	defer a.main.SetBounds(original)
+	var before, after struct{ Left, Top, Right, Bottom int32 }
+	hwnd := uintptr(a.main.NativeWindow())
+	getWindowRect.Call(hwnd, uintptr(unsafe.Pointer(&before)))
+	x, y := before.Right-3, (before.Top+before.Bottom)/2
+	user32.NewProc("SetCursorPos").Call(uintptr(x), uintptr(y))
+	time.Sleep(100 * time.Millisecond)
+	user32.NewProc("mouse_event").Call(2, 0, 0, 0, 0)
+	user32.NewProc("SetCursorPos").Call(uintptr(x+8), uintptr(y))
+	time.Sleep(100 * time.Millisecond)
+	user32.NewProc("SetCursorPos").Call(uintptr(x+50), uintptr(y))
+	time.Sleep(100 * time.Millisecond)
+	user32.NewProc("mouse_event").Call(4, 0, 0, 0, 0)
+	time.Sleep(200 * time.Millisecond)
+	getWindowRect.Call(hwnd, uintptr(unsafe.Pointer(&after)))
+	if after.Right-after.Left < before.Right-before.Left+20 {
+		return fmt.Errorf("right window edge did not resize with scrollbar: before=%v after=%v", before, after)
+	}
+	return nil
+}
+
 func clickAcknowledge(a *App) error {
 	a.notice.ExecJS(`(()=>{const b=document.querySelector('.notice-window header button[aria-label="通知を閉じる"]');if(!b)return;const r=b.getBoundingClientRect();fetch('/wails/runtime?object=0&method=0&args='+encodeURIComponent(JSON.stringify({'call-id':'native-click',methodName:'main.App.SmokeTarget',args:[r.x+r.width/2,r.y+r.height/2]})))})()`)
 	var p [2]float64
@@ -117,6 +187,11 @@ func startNativeVerification(a *App) {
 			finish(fmt.Errorf("notification renderer did not initialise"))
 			return
 		}
+		if e := checkRightEdgeResize(a); e != nil {
+			finish(e)
+			return
+		}
+		result["right-edge-resize-with-scrollbar"] = true
 		a.main.Hide()
 		exe, _ := os.Executable()
 		probe := exec.Command(exe, "--focus-probe")
@@ -235,6 +310,44 @@ func startNativeVerification(a *App) {
 			return
 		}
 		result["persistent-until-ack"] = true
+		// Mixed-size notifications and promotion after dismissing the first.
+		if _, e := a.store.SaveTask(board.Task{Title: "Summary placement probe", Deadline: time.Now().Format("2006-01-02")}); e != nil {
+			finish(e)
+			return
+		}
+		prefs, _ := a.store.Snapshot()
+		prefs.Settings.NotifyTimes = []string{time.Now().Format("15:04")}
+		prefs.Settings.NotifyWeekdays = []int{int(time.Now().Weekday())}
+		if e := a.store.SaveSettings(prefs.Settings); e != nil {
+			finish(e)
+			return
+		}
+		if _, e := a.store.Tick(time.Now(), false); e != nil {
+			finish(e)
+			return
+		}
+		a.refreshNotice()
+		time.Sleep(2 * time.Second)
+		if e := checkNoticeRectangles(a); e != nil {
+			finish(e)
+			return
+		}
+		result["mixed-size-notifications"] = true
+		snapshot, _ := a.store.Snapshot()
+		for _, n := range snapshot.Notifications {
+			if !n.Acknowledged {
+				a.Acknowledge(n.ID)
+				break
+			}
+		}
+		time.Sleep(500 * time.Millisecond)
+		if e := checkNoticeRectangles(a); e != nil {
+			finish(e)
+			return
+		}
+		result["notification-promotion-layout"] = true
+		prefs.Settings.NotifyTimes = []string{}
+		a.store.SaveSettings(prefs.Settings)
 		a.Acknowledge(0)
 		visible, _, _ = user32.NewProc("IsWindowVisible").Call(uintptr(a.notice.NativeWindow()))
 		if visible != 0 {
@@ -346,7 +459,7 @@ func startNativeVerification(a *App) {
 		competitor.Close()
 		// General keys use the same native registration and conflict safeguards.
 		general := settings.Settings
-		general.QuickShortcut = "Ctrl+Alt+Space"
+		general.QuickShortcut = "Ctrl+Alt+Shift+Space"
 		if err = a.SaveSettings(general); err != nil {
 			finish(err)
 			return

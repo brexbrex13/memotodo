@@ -34,8 +34,8 @@ export function Editor({
   const resize = useRef<HTMLDivElement>(null);
   const [height] = useState(() =>
     Math.max(
-      140,
-      Math.min(900, Number(localStorage.getItem("memo-height")) || 180),
+      64,
+      Math.min(900, Number(localStorage.getItem("memo-height-small")) || 80),
     ),
   );
 
@@ -115,6 +115,25 @@ export function Editor({
             return true;
           }
         }
+        const text = e.clipboardData?.getData("text/plain")?.trim() || "";
+        if (text && !/[\r\n]/.test(text)) {
+          try {
+            const href = memoLink(text);
+            const label = text.replace(/^"(.*)"$/, "$1");
+            const mark = _view.state.schema.marks.link.create({ href });
+            _view.dispatch(
+              _view.state.tr
+                .replaceSelectionWith(
+                  _view.state.schema.text(label, [mark]),
+                  false,
+                )
+                .setStoredMarks(null),
+            );
+            return true;
+          } catch {
+            /* Ordinary text keeps its original paste behavior. */
+          }
+        }
         return false;
       },
       handleDrop: (_view, e) => {
@@ -151,7 +170,7 @@ export function Editor({
     if (!el) return;
     const persist = () =>
       localStorage.setItem(
-        "memo-height",
+        "memo-height-small",
         String(Math.round(el.getBoundingClientRect().height)),
       );
     el.addEventListener("pointerup", persist);
@@ -225,12 +244,27 @@ export function Editor({
               onError(e);
               return;
             }
-            editor
-              .chain()
-              .focus()
-              .extendMarkRange("link")
-              .setLink({ href: target })
-              .run();
+            if (editor.state.selection.empty && !editor.isActive("link")) {
+              editor
+                .chain()
+                .focus()
+                .insertContent({
+                  type: "text",
+                  text: href.trim().replace(/^"(.*)"$/, "$1"),
+                  marks: [{ type: "link", attrs: { href: target } }],
+                })
+                .command(({ tr }) => {
+                  tr.setStoredMarks([]);
+                  return true;
+                })
+                .run();
+            } else
+              editor
+                .chain()
+                .focus()
+                .extendMarkRange("link")
+                .setLink({ href: target })
+                .run();
           }}
         >
           <Icon name="link" />

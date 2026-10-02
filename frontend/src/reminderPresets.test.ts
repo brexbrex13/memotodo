@@ -13,6 +13,8 @@ it("uses the configured wall-clock time across week/month/year boundaries", () =
 it("warns about conventional shortcuts without calling them actual registration conflicts", () => {
   expect(shortcutWarning("Ctrl+V")).toContain("標準操作");
   expect(shortcutWarning("Alt+Tab")).toContain("Windows");
+  expect(shortcutWarning("Alt+Space")).toContain("Windows");
+  expect(shortcutWarning("Ctrl+Alt+Shift+Space")).toBe("");
   expect(shortcutWarning("Ctrl+Alt+N")).toContain("Office");
   expect(shortcutWarning("Ctrl+1")).toContain("Office");
   expect(shortcutWarning("Ctrl+Alt+Shift+F11")).toBe("");

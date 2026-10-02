@@ -208,6 +208,18 @@ func (a *App) placeQuickAtCursor(capture bool) {
 		user32.NewProc("SetWindowPos").Call(uintptr(a.mini.NativeWindow()), 0, uintptr(x), uintptr(y), 0, 0, 0x15)
 	})
 }
+
+// A manually moved mini window keeps its position while its options expand.
+func (a *App) rememberQuickPosition() {
+	application.InvokeSync(func() {
+		var r struct{ Left, Top, Right, Bottom int32 }
+		ok, _, _ := getWindowRect.Call(uintptr(a.mini.NativeWindow()), uintptr(unsafe.Pointer(&r)))
+		if ok != 0 {
+			a.quickX, a.quickY = r.Left-12, r.Top-12
+			a.quickCursor.Store(true)
+		}
+	})
+}
 func (a *App) quickLostFocus() {
 	if a.quitting.Load() {
 		return

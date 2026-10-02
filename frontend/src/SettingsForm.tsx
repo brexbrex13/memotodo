@@ -150,11 +150,19 @@ export function SettingsForm({
                 <option value="primary">メインディスプレイ</option>
               </select>
             </label>
+            <button
+              className="wide"
+              data-tip="保存済みの設定で通知をテストします"
+              onClick={() => void api("TestNotification").catch(onError)}
+            >
+              通知をテスト
+            </button>
             <h3 className="wide">アプリ</h3>
             <ShortcutField
               value={v.quick_shortcut ?? "Ctrl+Alt+N"}
               onChange={(quick_shortcut) => patch({ quick_shortcut })}
             />
+            <h3 className="wide">表示</h3>
             <label>
               文字サイズ
               <input
@@ -173,13 +181,23 @@ export function SettingsForm({
               />
               一覧をコンパクトに表示
             </label>
+            <div
+              className={"wide density-preview" + (v.compact ? " compact" : "")}
+              aria-label="一覧表示のプレビュー"
+              style={{ fontSize: v.font_size }}
+            >
+              <div className="task-row">
+                <span>□</span>
+                <span>タスクの表示例</span>
+                <span>☆</span>
+              </div>
+              <div className="task-row">
+                <span>□</span>
+                <span>次のタスク</span>
+                <span>☆</span>
+              </div>
+            </div>
           </div>
-          <button
-            data-tip="保存済みの設定で通知をテストします"
-            onClick={() => void api("TestNotification").catch(onError)}
-          >
-            通知をテスト
-          </button>
           <h3>データとバックアップ</h3>
           <div className="actions">
             <button

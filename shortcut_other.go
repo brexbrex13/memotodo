@@ -12,3 +12,5 @@ func (a *App) hideQuickNative()                  { a.mini.Hide() }
 
 func (*App) placeQuickAtCursor(bool) {}
 func (*App) quickLostFocus()         {}
+
+func (*App) rememberQuickPosition() {}
