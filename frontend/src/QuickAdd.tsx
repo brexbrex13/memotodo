@@ -42,8 +42,10 @@ export function QuickAdd() {
     optionsRef = useRef(options),
     composing = useRef(false),
     lastAsked = useRef(""),
-    smartSeq = useRef(0);
+    smartSeq = useRef(0),
+    textRef = useRef(text);
   optionsRef.current = options;
+  textRef.current = text;
   useEffect(() => {
     localStorage.removeItem("tray-quick-draft");
     localStorage.removeItem("tray-quick-options");
@@ -147,6 +149,7 @@ export function QuickAdd() {
         .then((s) => {
           if (
             !s ||
+            title !== textRef.current.trim() ||
             seq !== smartSeq.current ||
             token !== operation.current ||
             gen !== generationRef.current
@@ -391,7 +394,12 @@ export function QuickAdd() {
             defaultTime={snapshot?.settings.reminder_default_time}
             onChange={(p) => {
               if ("deadline" in p) touch("deadline");
-              if ("reminder_at" in p || "reminder_mode" in p) touch("reminder");
+              if (
+                "reminder_at" in p ||
+                "reminder_mode" in p ||
+                "reminder_time" in p
+              )
+                touch("reminder");
               setOptions((v) => ({ ...v, ...p }));
             }}
           />

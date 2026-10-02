@@ -264,3 +264,56 @@ it("never asks Jev when smart add is off or no key is set", async () => {
   await act(() => sleep(700));
   expect(calls("SuggestQuickAdd")).toHaveLength(0);
 });
+it("drops an answer for a title that was cleared or replaced before it arrived", async () => {
+  const pending: ((v: unknown) => void)[] = [];
+  smartMock(() => new Promise((resolve) => pending.push(resolve)));
+  render(<QuickAdd />);
+  const input = screen.getByLabelText("トレイからタスク追加");
+  await act(async () => {});
+  fireEvent.change(input, { target: { value: "請求書提出" } });
+  await waitFor(() => expect(pending).toHaveLength(1), { timeout: 1500 });
+  fireEvent.change(input, { target: { value: "" } });
+  await act(async () =>
+    pending[0](
+      result({
+        important: true,
+        duplicate: { task_id: 7, title: "請求書提出" },
+      }),
+    ),
+  );
+  expect(screen.queryByLabelText("推定した初期値")).toBeNull();
+  expect(screen.queryByText(/似たタスクがあります/)).toBeNull();
+  fireEvent.change(input, { target: { value: "別の用事" } });
+  await waitFor(() => expect(pending).toHaveLength(2), { timeout: 1500 });
+  fireEvent.change(input, { target: { value: "別の用事2" } });
+  await act(async () => pending[1](result({ important: true })));
+  fireEvent.keyDown(input, { key: "Enter", keyCode: 13 });
+  await waitFor(() => expect(calls("SaveTask")).toHaveLength(1));
+  expect(calls("SaveTask")[0][1]).toMatchObject({
+    title: "別の用事2",
+    important: false,
+  });
+});
+it("keeps a deadline reminder time the user changed", async () => {
+  smartMock(() => result({ deadline: "today", reminder: "deadline" }));
+  render(<QuickAdd />);
+  const input = screen.getByLabelText("トレイからタスク追加");
+  await act(async () => {});
+  fireEvent.change(input, { target: { value: "請求書提出です" } });
+  await waitFor(() => screen.getByText("期限日に通知"), { timeout: 1500 });
+  fireEvent.click(screen.getByLabelText("登録時の期限・通知"));
+  fireEvent.change(screen.getByLabelText("期限日の通知時刻"), {
+    target: { value: "18:00" },
+  });
+  fireEvent.change(input, { target: { value: "請求書提出ですね" } });
+  await waitFor(() => expect(calls("SuggestQuickAdd")).toHaveLength(2), {
+    timeout: 1500,
+  });
+  await act(async () => {});
+  fireEvent.keyDown(input, { key: "Enter", keyCode: 13 });
+  await waitFor(() => expect(calls("SaveTask")).toHaveLength(1));
+  expect(calls("SaveTask")[0][1]).toMatchObject({
+    reminder_mode: "deadline",
+    reminder_time: "18:00",
+  });
+});
