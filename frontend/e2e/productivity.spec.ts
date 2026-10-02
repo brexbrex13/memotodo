@@ -189,6 +189,7 @@ test("stable tabs, reversible today filter, continuous registration and uncommit
   await expect(input).toHaveAttribute("readonly", "");
   const after = await regular.boundingBox();
   expect(after?.y).toBe(before?.y);
+  await regular.click();
   await page.getByRole("button", { name: "全て", exact: true }).click();
   await input.fill("連続登録一件目");
   await input.press("Enter");
@@ -234,12 +235,108 @@ test("notification pause accepts relative periods and can be cleared; shortcut o
       .locator('option[value="Space"], option')
       .filter({ hasText: /^Space$/ }),
   ).toHaveCount(1);
-  await panel.getByRole("button", { name: "30分", exact: true }).click();
-  const pause = panel.getByLabel("通知を一時停止（再開日時）");
-  expect(
-    new Date(await pause.inputValue()).getTime() - Date.now(),
-  ).toBeGreaterThan(28 * 60000);
-  await panel.getByRole("button", { name: "解除", exact: true }).click();
-  await expect(pause).toHaveValue("");
   await panel.getByRole("button", { name: "今すぐ保存", exact: true }).click();
+  const pauseOpen = async () => {
+    await page.getByRole("button", { name: "メニュー", exact: true }).click();
+    await page
+      .getByRole("button", { name: "通知を一時停止", exact: true })
+      .click();
+  };
+  await pauseOpen();
+  await page.getByRole("button", { name: "30分", exact: true }).click();
+  await expect(page.getByLabel("通知を一時停止", { exact: true })).toHaveCount(
+    0,
+  );
+  const snapshot = await service(page, "GetSnapshot");
+  expect(
+    new Date(snapshot.settings.pause_until).getTime() - Date.now(),
+  ).toBeGreaterThan(28 * 60000);
+  await pauseOpen();
+  await page
+    .getByRole("button", { name: "一時停止を解除", exact: true })
+    .click();
+  await expect
+    .poll(async () => (await service(page, "GetSnapshot")).settings.pause_until)
+    .toBe("");
+});
+
+test("status filters seed new tasks, history reopens inline, search expands in-place", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const input = page.getByLabel("新しい付箋");
+  await expect(input).toBeVisible();
+  await page.getByRole("button", { name: "今日やる", exact: true }).click();
+  await page.getByRole("button", { name: "重要", exact: true }).click();
+  await expect(input).toHaveAttribute(
+    "placeholder",
+    /今日やる・重要のタスクとして登録/,
+  );
+  await input.fill("今日と重要の新規登録");
+  await input.press("Enter");
+  const row = page
+    .locator("article")
+    .filter({ hasText: "今日と重要の新規登録" });
+  await expect(row).toBeVisible();
+  const snapshot = await service(page, "GetSnapshot");
+  expect(
+    snapshot.tasks.find((t: any) => t.title === "今日と重要の新規登録")
+      .important,
+  ).toBe(true);
+  await row.getByLabel("今日と重要の新規登録を完了").click();
+  const history = page.getByRole("button", { name: "完了済み", exact: true });
+  await history.click();
+  await expect(history).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    page.getByRole("button", { name: "今日やる", exact: true }),
+  ).toBeDisabled();
+  await expect(row).toBeVisible();
+  await row.getByLabel("今日と重要の新規登録を再開").click();
+  await expect(row).toHaveCount(0);
+  await history.click();
+  await expect(row).toBeVisible();
+  await page.getByRole("button", { name: "検索", exact: true }).click();
+  const search = page.getByRole("textbox", { name: "検索語", exact: true });
+  await search.fill("今日と重要");
+  const controls = page.getByLabel("タスクの絞り込み");
+  expect((await search.boundingBox())!.y).toBeLessThan(
+    (await controls.boundingBox())!.y + 40,
+  );
+  await input.click();
+  await expect(search).toHaveCount(0);
+  await expect(row).toBeVisible();
+  await page.getByLabel("検索を解除").click();
+});
+
+test("mini input clock preserves custom selection and saves deadline and notification", async ({
+  page,
+  context,
+}) => {
+  await page.goto("/");
+  await expect(page.getByLabel("新しい付箋")).toBeVisible();
+  const mini = await context.newPage();
+  await mini.setViewportSize({ width: 360, height: 430 });
+  await mini.goto("/?window=quick-add");
+  const input = mini.getByLabel("トレイからタスク追加");
+  await input.fill("ミニ期限通知確認");
+  await mini.getByLabel("登録時の期限・通知").click();
+  await mini.getByLabel("期限日", { exact: true }).fill("2099-10-02");
+  await mini.getByLabel("通知方法").selectOption("deadline");
+  await mini.getByLabel("通知方法").selectOption("custom");
+  await expect(mini.getByLabel("通知時刻", { exact: true })).toBeVisible();
+  await mini.getByLabel("通知時刻", { exact: true }).fill("2099-10-02T10:30");
+  await mini.getByLabel("重要", { exact: true }).check();
+  await mini.screenshot({ path: "test-results/mini-options.png" });
+  await input.press("Enter");
+  await expect(input).toHaveValue("");
+  await expect(input).toBeFocused();
+  const snapshot = await service(page, "GetSnapshot");
+  expect(
+    snapshot.tasks.find((t: any) => t.title === "ミニ期限通知確認"),
+  ).toMatchObject({
+    deadline: "2099-10-02",
+    important: true,
+    reminder_at: "2099-10-02T10:30",
+  });
+  await mini.close();
 });

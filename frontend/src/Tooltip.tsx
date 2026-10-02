@@ -17,7 +17,12 @@ export function Tooltip() {
       const target = (e.target as Element)?.closest?.("[data-tip], [title]");
       if (target === active) return;
       clear();
-      if (!target) return;
+      if (
+        !target ||
+        (target.closest(".quick, .mini-input") &&
+          document.querySelector(".task-suggestions"))
+      )
+        return;
       const text =
         target.getAttribute("data-tip") || target.getAttribute("title");
       if (!text) return;
@@ -25,6 +30,11 @@ export function Tooltip() {
       target.removeAttribute("title");
       active = target;
       timer = setTimeout(() => {
+        if (
+          target.closest(".quick, .mini-input") &&
+          document.querySelector(".task-suggestions")
+        )
+          return;
         const r = target.getBoundingClientRect();
         setTip({
           text,

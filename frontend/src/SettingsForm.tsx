@@ -34,13 +34,10 @@ export function SettingsForm({
           </button>
         </header>
         <div className="modal-body">
-          <div className="formgrid">
-            <ShortcutField
-              value={v.quick_shortcut ?? "Ctrl+Alt+N"}
-              onChange={(quick_shortcut) => patch({ quick_shortcut })}
-            />
+          <div className="formgrid settings-groups">
+            <h3 className="wide">通常タスク</h3>
             <label>
-              候補を表示する最低登録回数
+              入力候補に出す登録回数
               <input
                 type="number"
                 min={0}
@@ -50,8 +47,9 @@ export function SettingsForm({
                 onChange={(e) => patch({ suggest_min_count: +e.target.value })}
               />
             </label>
+            <h3 className="wide">定期タスク</h3>
             <label>
-              新規定期タスクの追加日数（初期値）
+              タスクリストへ追加する日数（期限の何日前）
               <input
                 type="number"
                 min={0}
@@ -60,8 +58,9 @@ export function SettingsForm({
                 onChange={(e) => patch({ series_show_days: +e.target.value })}
               />
             </label>
+            <h3 className="wide">期限表示</h3>
             <label>
-              期限が近いとする日数
+              「近日」に表示する日数
               <input
                 type="number"
                 min={0}
@@ -76,7 +75,19 @@ export function SettingsForm({
                 checked={v.workdays}
                 onChange={(e) => patch({ workdays: e.target.checked })}
               />
-              土日を除いて日数を数える
+              「近日」の日数から土日を除く
+            </label>
+            <h3 className="wide">通知</h3>
+            <label>
+              日付指定の通知時刻（初期値）
+              <input
+                type="time"
+                value={v.reminder_default_time || "09:00"}
+                onChange={(e) =>
+                  patch({ reminder_default_time: e.target.value })
+                }
+                data-tip="期限日・明日・来週・来月に適用。保存済みの通知時刻は変わりません。"
+              />
             </label>
             <label className="wide">
               まとめ通知の時刻（カンマ区切り・空欄でなし）
@@ -129,40 +140,6 @@ export function SettingsForm({
               />
               通知内容を隠し、件数だけ表示
             </label>
-            <div className="wide pause-presets">
-              {[10, 30, 60, 360, 1440].map((minutes) => (
-                <button
-                  type="button"
-                  key={minutes}
-                  onClick={() => {
-                    const until = new Date(Date.now() + minutes * 60000);
-                    const local = new Date(
-                      until.getTime() - until.getTimezoneOffset() * 60000,
-                    )
-                      .toISOString()
-                      .slice(0, 16);
-                    patch({ pause_until: local });
-                  }}
-                >
-                  {minutes < 60
-                    ? minutes + "分"
-                    : minutes < 1440
-                      ? minutes / 60 + "時間"
-                      : "1日"}
-                </button>
-              ))}
-              <button type="button" onClick={() => patch({ pause_until: "" })}>
-                解除
-              </button>
-            </div>
-            <label>
-              通知を一時停止（再開日時）
-              <input
-                type="datetime-local"
-                value={v.pause_until.slice(0, 16)}
-                onChange={(e) => patch({ pause_until: e.target.value })}
-              />
-            </label>
             <label>
               通知を表示する画面
               <select
@@ -173,6 +150,11 @@ export function SettingsForm({
                 <option value="primary">メインディスプレイ</option>
               </select>
             </label>
+            <h3 className="wide">アプリ</h3>
+            <ShortcutField
+              value={v.quick_shortcut ?? "Ctrl+Alt+N"}
+              onChange={(quick_shortcut) => patch({ quick_shortcut })}
+            />
             <label>
               文字サイズ
               <input

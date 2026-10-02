@@ -158,6 +158,15 @@ func (s *Store) restoreZIP(z *zip.Reader) error {
 			if e = json.Unmarshal([]byte(v.Value), &settings); e != nil {
 				return e
 			}
+		case "category_model":
+			if v.Value != "1" {
+				return errors.New("カテゴリ形式が不正です")
+			}
+		case "window_size":
+			var size [2]int
+			if e = json.Unmarshal([]byte(v.Value), &size); e != nil {
+				return e
+			}
 		case "summary_cursor":
 			if !strings.HasPrefix(v.Value, "summary:") {
 				return errors.New("定時通知の記録が不正です")
@@ -241,6 +250,9 @@ func (s *Store) restoreZIP(z *zip.Reader) error {
 		if _, e = tx.Exec("INSERT INTO notifications(id,event_key,data) VALUES(?,?,?)", n.ID, n.Key, string(b)); e != nil {
 			return e
 		}
+	}
+	if e = normalizeCategories(tx); e != nil {
+		return e
 	}
 	if e = s.freezeInheritedLead(tx); e != nil {
 		return e

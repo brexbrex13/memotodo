@@ -366,6 +366,7 @@ func startNativeVerification(a *App) {
 		a.main.Hide()
 		a.mini.Hide()
 		user32.NewProc("SetForegroundWindow").Call(foreground)
+		user32.NewProc("SetCursorPos").Call(220, 170)
 		keyboard := user32.NewProc("keybd_event")
 		for _, key := range []uintptr{0x11, 0x12, 0x10, 0x7A} {
 			keyboard.Call(key, 0, 0, 0)
@@ -386,6 +387,13 @@ func startNativeVerification(a *App) {
 			finish(fmt.Errorf("global shortcut did not focus quick input"))
 			return
 		}
+		var quickRect struct{ Left, Top, Right, Bottom int32 }
+		user32.NewProc("GetWindowRect").Call(uintptr(a.mini.NativeWindow()), uintptr(unsafe.Pointer(&quickRect)))
+		if quickRect.Left != 232 || quickRect.Top != 182 {
+			finish(fmt.Errorf("quick input not at cursor: %+v", quickRect))
+			return
+		}
+		result["quick-input-at-cursor"] = true
 		previous := a.quickPrevious.Load()
 		a.HideQuickAdd()
 		time.Sleep(200 * time.Millisecond)
@@ -394,6 +402,27 @@ func startNativeVerification(a *App) {
 			finish(fmt.Errorf("closing quick input did not return to original app: expected=%x saved=%x active=%x", foreground, previous, active))
 			return
 		}
+		a.showQuickAtCursor()
+		time.Sleep(200 * time.Millisecond)
+		user32.NewProc("SetForegroundWindow").Call(foreground)
+		deadline = time.Now().Add(3 * time.Second)
+		for time.Now().Before(deadline) {
+			miniVisible, _, _ = user32.NewProc("IsWindowVisible").Call(uintptr(a.mini.NativeWindow()))
+			if miniVisible == 0 {
+				break
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		if miniVisible != 0 {
+			finish(fmt.Errorf("quick input did not hide after focus loss"))
+			return
+		}
+		active, _, _ = getForegroundWindow.Call()
+		if active != foreground {
+			finish(fmt.Errorf("auto-hide stole focus"))
+			return
+		}
+		result["quick-input-blur-hides-without-focus-theft"] = true
 		settings.Settings.QuickShortcut = savedShortcut
 		if err = a.SaveSettings(settings.Settings); err != nil {
 			finish(err)

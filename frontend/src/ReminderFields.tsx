@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { presetTime } from "./reminderPresets";
 export type ReminderValue = {
   deadline: string;
   reminder_at: string;
@@ -8,7 +9,9 @@ export type ReminderValue = {
 export function ReminderFields({
   value,
   onChange,
+  defaultTime = "09:00",
 }: {
+  defaultTime?: string;
   value: ReminderValue;
   onChange: (patch: Partial<ReminderValue>) => void;
 }) {
@@ -19,13 +22,17 @@ export function ReminderFields({
         ? "custom"
         : "off",
   );
+  const presetAt = useRef("");
   useEffect(() => {
     if (value.reminder_mode === "deadline") setMode("deadline");
-    else if (value.reminder_at) setMode("custom");
+    else if (value.reminder_at && value.reminder_at !== presetAt.current)
+      setMode("custom");
+    else if (!value.reminder_at)
+      setMode((current) => (current === "custom" ? current : "off"));
   }, [value.reminder_mode, value.reminder_at]);
   const at =
     value.reminder_mode === "deadline" && value.deadline
-      ? value.deadline.slice(0, 10) + "T" + (value.reminder_time || "09:00")
+      ? value.deadline.slice(0, 10) + "T" + (value.reminder_time || defaultTime)
       : value.reminder_at;
   return (
     <>
@@ -56,19 +63,33 @@ export function ReminderFields({
           onChange={(e) => {
             const next = e.target.value;
             setMode(next);
+            const at = ["off", "deadline", "custom"].includes(next)
+              ? next === "custom"
+                ? value.reminder_at
+                : ""
+              : presetTime(next, defaultTime);
+            presetAt.current = at;
             onChange({
               reminder_mode: next === "deadline" ? "deadline" : "",
-              reminder_time:
-                next === "deadline" ? value.reminder_time || "09:00" : "",
-              reminder_at: next === "custom" ? value.reminder_at : "",
+              reminder_time: next === "deadline" ? defaultTime : "",
+              reminder_at: at,
             });
           }}
         >
           <option value="off">通知なし</option>
-          <option value="custom">日時を指定</option>
+
           <option value="deadline" disabled={!value.deadline}>
-            期限に合わせて通知
+            期限日と同じ
           </option>
+          <option value="tomorrow">明日</option>
+          <option value="30m">30分後</option>
+          <option value="1h">1時間後</option>
+          <option value="4h">4時間後</option>
+          <option value="24h">24時間後</option>
+          <option value="1w">1週間後</option>
+          <option value="next-week">来週（月曜日）</option>
+          <option value="next-month">来月（1日）</option>
+          <option value="custom">日時指定</option>
         </select>
       </label>
       {mode === "custom" && (
@@ -86,8 +107,10 @@ export function ReminderFields({
           期限日の通知時刻
           <input
             type="time"
-            value={value.reminder_time || "09:00"}
-            onChange={(e) => onChange({ reminder_time: e.target.value })}
+            value={value.reminder_time || defaultTime}
+            onChange={(e) =>
+              onChange({ reminder_time: e.target.value || defaultTime })
+            }
           />
         </label>
       )}

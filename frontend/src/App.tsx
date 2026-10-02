@@ -34,6 +34,7 @@ import { TaskDetail, DraftHandle } from "./TaskDetail";
 import { SeriesForm } from "./SeriesForm";
 import { SettingsForm } from "./SettingsForm";
 import { CategoryManager } from "./CategoryManager";
+import { NotificationPause } from "./NotificationPause";
 import { ReminderFields } from "./ReminderFields";
 import { useSuggestions } from "./Suggestions";
 import { UndoToast } from "./UndoToast";
@@ -76,6 +77,7 @@ function Row({
   u,
   open,
   complete,
+  reopen,
   toggleImportant,
   toggleToday,
   drag,
@@ -84,6 +86,7 @@ function Row({
   u: string;
   open: () => void;
   complete: () => void;
+  reopen: () => void;
   toggleImportant: () => void;
   toggleToday: () => void;
   drag: boolean;
@@ -130,6 +133,15 @@ function Row({
       )}
       <button className="card-content" onClick={open}>
         <span className="task-title">{t.title}</span>
+        {t.series_id > 0 && (
+          <span
+            className="recurring-mark"
+            data-tip="定期設定から追加されたタスク"
+            aria-label="定期タスク"
+          >
+            ↻
+          </span>
+        )}
         {t.memo && (
           <span className="memo-mark" data-tip="メモあり">
             ▤
@@ -148,6 +160,16 @@ function Row({
         <span data-tip={"通知 " + t.reminder_at.replace("T", " ").slice(0, 16)}>
           <Bell />
         </span>
+      )}
+      {t.status !== "pending" && !t.deleted_at && (
+        <button
+          className="row-reopen icon"
+          aria-label={t.title + "を再開"}
+          data-tip="未完了に戻す"
+          onClick={reopen}
+        >
+          <Icon name="undo" />
+        </button>
       )}
       {t.status === "pending" && !t.deleted_at && (
         <input
@@ -188,6 +210,7 @@ export default function App() {
     [error, setError] = useState(""),
     [view, setView] = useState("board"),
     [todayOnly, setTodayOnly] = useState(false),
+    [recurringOnly, setRecurringOnly] = useState(false),
     [category, setCategory] = useState(-1),
     [query, setQuery] = useState(""),
     [important, setImportant] = useState(false),
@@ -270,6 +293,7 @@ export default function App() {
       on("board:error", report),
       on("board:quick", () => {
         setView("board");
+        setRecurringOnly(false);
         setTodayOnly(false);
         requestAnimationFrame(() => quickRef.current?.focus());
       }),
@@ -324,6 +348,7 @@ export default function App() {
       if (e.ctrlKey && e.key === "n") {
         e.preventDefault();
         setView("board");
+        setRecurringOnly(false);
         setTodayOnly(false);
         requestAnimationFrame(() => quickRef.current?.focus());
       }
@@ -353,15 +378,16 @@ export default function App() {
     }),
   );
   const add = async () => {
-    if (addLock.current || (view !== "board" && !todayOnly) || !quick.trim())
+    if (addLock.current || view !== "board" || recurringOnly || !quick.trim())
       return;
     addLock.current = true;
     setAdding(true);
     try {
       await api("SaveTask", {
-        ...emptyTask(category > 0 ? category : 0),
+        ...emptyTask(category > 0 ? category : categories[0]?.id || 0),
         title: quick,
         ...quickOptions,
+        important: important || quickOptions.important,
         today_date: todayOnly ? date() : "",
       });
       setQuick("");
@@ -412,18 +438,9 @@ export default function App() {
   const urgent = pending
     .filter((t) => urgency(t, data.settings))
     .sort((a, b) => a.deadline.localeCompare(b.deadline));
-  const categories = [
-    {
-      id: 0,
-      name: "未分類",
-      color: "#fffdf8",
-      text_color: "#302d25",
-      sort_order: -1,
-    },
-    ...data.categories
-      .slice()
-      .sort((a, b) => a.sort_order - b.sort_order || a.id - b.id),
-  ];
+  const categories = data.categories
+    .slice()
+    .sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
   const visibleCategories = categories.filter((c) => !c.dormant);
   let tasks = data.tasks
     .filter((t) =>
@@ -435,12 +452,7 @@ export default function App() {
             ? !t.deleted_at && t.status !== "pending"
             : !t.deleted_at && t.status === "pending",
     )
-    .filter(
-      (t) =>
-        todayOnly ||
-        (view !== "board" && view !== "recurring") ||
-        (view === "recurring" ? t.series_id > 0 : t.series_id === 0),
-    )
+    .filter((t) => !recurringOnly || t.series_id > 0)
     .filter((t) => !todayOnly || t.today_date === date())
     .filter((t) => todayOnly || category < 0 || t.category_id === category)
     .filter((t) => !important || t.important)
@@ -459,22 +471,15 @@ export default function App() {
     );
   tasks = tasks.sort((a, b) => a.sort_order - b.sort_order || b.id - a.id);
   const groups = (
-    view === "board" || view === "recurring" || todayOnly
-      ? visibleCategories
-      : categories
+    view === "board" || todayOnly ? visibleCategories : categories
   )
     .filter((c) => todayOnly || category < 0 || c.id === category)
     .filter(
       (c) =>
-        (view !== "recurring" && !todayOnly) ||
+        (!recurringOnly && !todayOnly) ||
         tasks.some((t) => t.category_id === c.id),
     );
-  const drag =
-    (view === "board" || view === "recurring") &&
-    !todayOnly &&
-    !query &&
-    !important &&
-    !dated;
+  const drag = view === "board" && !todayOnly && !query && !important && !dated;
   const dropped = async (e: DragEndEvent) => {
     if (!e.over || e.active.id === e.over.id) return;
     const moving = tasks.find((t) => t.id === e.active.id);
@@ -517,7 +522,20 @@ export default function App() {
       setPanel("");
     });
   const pendingCount = data.notifications.filter((n) => !n.acknowledged).length;
-  const inputAvailable = view === "board" || todayOnly;
+  const inputAvailable = view === "board" && !recurringOnly;
+  const addTraits = [todayOnly ? "今日やる" : "", important ? "重要" : ""]
+    .filter(Boolean)
+    .join("・");
+  const categoryPrefix =
+    category > 0
+      ? `「${categories.find((c) => c.id === category)?.name ?? "選択カテゴリ"}」に`
+      : "";
+  const quickPlaceholder = !inputAvailable
+    ? "この表示ではタスクを追加できません"
+    : categoryPrefix +
+      (addTraits
+        ? addTraits + "のタスクとして登録"
+        : "タスクを入力してEnterで追加");
   return (
     <div
       className={"app " + (data.settings.compact ? "compact" : "")}
@@ -542,7 +560,7 @@ export default function App() {
             <Bell />
           </button>
           <button
-            className="icon"
+            className={"icon" + (view === "history" ? " active" : "")}
             aria-label="完了済み"
             data-tip="完了済み"
             aria-pressed={view === "history"}
@@ -578,6 +596,14 @@ export default function App() {
           </button>
         </div>
       </header>
+      {panel === "pause" && (
+        <NotificationPause
+          current={data.settings.pause_until}
+          onClose={() => setPanel("")}
+          onSaved={reload}
+          onError={report}
+        />
+      )}
       {menu && (
         <nav className="popover app-menu" aria-label="メニュー項目">
           <button onClick={() => void navigate(() => setPanel("notices"))}>
@@ -587,6 +613,10 @@ export default function App() {
             )}
           </button>
           <button onClick={() => setTab("trash")}>ごみ箱</button>
+          <hr />
+          <button onClick={() => void navigate(() => setPanel("pause"))}>
+            通知を一時停止
+          </button>
           <hr />
           <button onClick={() => void navigate(() => setPanel("categories"))}>
             カテゴリ管理
@@ -734,14 +764,10 @@ export default function App() {
               <textarea
                 ref={quickRef}
                 aria-label="新しい付箋"
-                placeholder={
-                  !inputAvailable
-                    ? "この表示ではタスクを追加できません"
-                    : category > 0
-                      ? "このカテゴリに追加…"
-                      : "タスクを入力してEnterで追加"
+                placeholder={quickPlaceholder}
+                data-tip={
+                  !suggest.open ? "Enterで追加、Shift+Enterで改行" : undefined
                 }
-                data-tip="Enterで追加、Shift+Enterで改行"
                 value={quick}
                 readOnly={adding || !inputAvailable}
                 aria-disabled={!inputAvailable}
@@ -801,12 +827,19 @@ export default function App() {
                 >
                   <ReminderFields
                     value={quickOptions}
+                    defaultTime={data.settings.reminder_default_time}
                     onChange={(p) => setQuickOptions((v) => ({ ...v, ...p }))}
                   />
                   <label className="check">
                     <input
                       type="checkbox"
-                      checked={quickOptions.important}
+                      checked={important || quickOptions.important}
+                      disabled={important}
+                      data-tip={
+                        important
+                          ? "重要で絞り込み中は、重要タスクとして追加します"
+                          : undefined
+                      }
                       onChange={(e) =>
                         setQuickOptions({
                           ...quickOptions,
@@ -822,17 +855,9 @@ export default function App() {
           }
           <div className="filters">
             <button
-              className={
-                "recurring-tab " + (view === "recurring" ? "active" : "")
-              }
-              onClick={() => setTab("recurring")}
-            >
-              定期
-            </button>
-            <button
               className={view === "board" && category < 0 ? "active" : ""}
               onClick={() => setTab("board")}
-              data-tip="通常タスクをすべて表示。定期タスクは定期タブで確認できます。"
+              data-tip="全カテゴリのタスクを表示"
             >
               全て
             </button>
@@ -840,9 +865,7 @@ export default function App() {
               <button
                 key={c.id}
                 className={category === c.id ? "active" : ""}
-                onClick={() =>
-                  setTab(view === "recurring" ? "recurring" : "board", c.id)
-                }
+                onClick={() => setTab("board", c.id)}
               >
                 {c.name}
               </button>
@@ -850,6 +873,13 @@ export default function App() {
           </div>
           <div className="task-filters" aria-label="タスクの絞り込み">
             <button
+              aria-pressed={recurringOnly}
+              onClick={() => setRecurringOnly(!recurringOnly)}
+            >
+              <span aria-hidden="true">↻</span>定期
+            </button>
+            <button
+              disabled={view !== "board"}
               aria-pressed={todayOnly}
               onClick={() =>
                 void navigate(() => {
@@ -862,14 +892,6 @@ export default function App() {
               今日やる
             </button>
 
-            <button
-              aria-label="検索"
-              aria-expanded={search}
-              data-tip="検索 Ctrl+F"
-              onClick={() => setSearch(!search)}
-            >
-              <Icon name="search" />
-            </button>
             <button
               aria-label="期限あり"
               aria-pressed={dated}
@@ -888,18 +910,41 @@ export default function App() {
               <Icon name="star" filled={important} />
               重要
             </button>
+            <div className={"inline-search" + (search ? " expanded" : "")}>
+              <button
+                aria-label="検索"
+                aria-expanded={search}
+                data-tip="検索 Ctrl+F"
+                onClick={() => {
+                  setSearch(true);
+                  requestAnimationFrame(() =>
+                    document.getElementById("search")?.focus(),
+                  );
+                }}
+              >
+                <Icon name="search" />
+              </button>
+              {search && (
+                <input
+                  id="search"
+                  aria-label="検索語"
+                  placeholder="タスク・メモを検索"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onBlur={() => setSearch(false)}
+                />
+              )}
+              {!search && query && (
+                <button
+                  aria-label="検索を解除"
+                  data-tip={"検索中：" + query}
+                  onClick={() => setQuery("")}
+                >
+                  ×
+                </button>
+              )}
+            </div>
           </div>
-          {search && (
-            <input
-              id="search"
-              aria-label="検索"
-              className="search"
-              placeholder="タスク・メモ・カテゴリを検索"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          )}
-
           {!todayOnly && (view === "history" || view === "trash") && (
             <div className="section-head">
               <h2>{view === "history" ? "完了済み" : "ごみ箱"}</h2>
@@ -934,6 +979,7 @@ export default function App() {
                         drag={drag}
                         open={() => void open(t)}
                         complete={() => void state(t, "done")}
+                        reopen={() => void state(t, "pending")}
                         toggleToday={() =>
                           void api("ToggleToday", t.id)
                             .then(reload)
@@ -963,8 +1009,9 @@ export default function App() {
             />
             <TaskDetail
               key={selected.id}
+              defaultTime={data.settings.reminder_default_time}
               task={selected}
-              categories={data.categories}
+              categories={categories}
               onClose={() => setSelected(null)}
               onSaved={() => void reload()}
               onError={report}
@@ -1127,7 +1174,7 @@ export default function App() {
       {series && (
         <SeriesForm
           initial={series}
-          categories={data.categories}
+          categories={categories}
           defaultShowDays={data.settings.series_show_days ?? 7}
           onClose={() => setSeries(null)}
           onSaved={() => void reload()}

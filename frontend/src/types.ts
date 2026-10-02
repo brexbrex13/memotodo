@@ -68,6 +68,7 @@ export type ColorPreset = {
   foreground: string;
 };
 export type Settings = {
+  reminder_default_time?: string;
   quick_shortcut?: string;
   suggest_min_count?: number;
   theme?: "light" | "dark" | "system";

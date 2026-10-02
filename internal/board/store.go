@@ -51,6 +51,19 @@ func Open(dir string) (*Store, error) {
 		db.Close()
 		return nil, e
 	}
+	tx, e := db.Begin()
+	if e == nil {
+		e = normalizeCategories(tx)
+		if e == nil {
+			e = tx.Commit()
+		} else {
+			tx.Rollback()
+		}
+	}
+	if e != nil {
+		db.Close()
+		return nil, e
+	}
 	return s, nil
 }
 func (s *Store) Close() error { return s.db.Close() }
@@ -184,6 +197,13 @@ func (s *Store) SaveTask(t Task) (Task, error) {
 	if e := validateTask(t); e != nil {
 		return t, e
 	}
+	if t.CategoryID == 0 {
+		var e error
+		t.CategoryID, e = defaultCategory(tx)
+		if e != nil {
+			return t, e
+		}
+	}
 	if t.CategoryID != 0 {
 		if _, e := load[Category](tx, "categories", t.CategoryID); e != nil {
 			return t, errors.New("カテゴリが見つかりません")
@@ -313,6 +333,22 @@ func (s *Store) SaveCategory(c Category) (Category, error) {
 	if !validColor(c.TextColor) {
 		return c, errors.New("文字色が不正です")
 	}
+	if c.ID != 0 {
+		old, e := load[Category](tx, "categories", c.ID)
+		if e != nil {
+			return c, e
+		}
+		c.SortOrder = old.SortOrder
+	}
+	if c.ID != 0 && c.Dormant {
+		first, e := defaultCategory(tx)
+		if e != nil {
+			return c, e
+		}
+		if first == c.ID {
+			return c, errors.New("先頭のカテゴリは標準追加先のため非表示にできません")
+		}
+	}
 	if c.ID == 0 {
 		r, e := tx.Exec("INSERT INTO categories(data) VALUES('{}')")
 		if e != nil {
@@ -345,13 +381,34 @@ func (s *Store) DeleteCategory(id int64) error {
 		return e
 	}
 	defer tx.Rollback()
+	cs, e := orderedCategories(tx)
+	if e != nil {
+		return e
+	}
+	if len(cs) <= 1 {
+		return errors.New("カテゴリは最低1個必要です")
+	}
+	if _, e = load[Category](tx, "categories", id); e != nil {
+		return e
+	}
+	var target Category
+	for _, c := range cs {
+		if c.ID != id {
+			target = c
+			break
+		}
+	}
+	target.Dormant = false
+	if e = put(tx, "categories", target.ID, target); e != nil {
+		return e
+	}
 	ts, e := list[Task](tx, "tasks")
 	if e != nil {
 		return e
 	}
 	for _, t := range ts {
 		if t.CategoryID == id {
-			t.CategoryID = 0
+			t.CategoryID = target.ID
 			t.Version++
 			if e = put(tx, "tasks", t.ID, t); e != nil {
 				return e
@@ -364,7 +421,7 @@ func (s *Store) DeleteCategory(id int64) error {
 	}
 	for _, v := range ss {
 		if v.CategoryID == id {
-			v.CategoryID = 0
+			v.CategoryID = target.ID
 			v.Version++
 			if e = put(tx, "series", v.ID, v); e != nil {
 				return e
@@ -384,6 +441,9 @@ func (s *Store) ValidateSettings(v Settings) error {
 func validateSettings(q queryer, v Settings) error {
 	if _, _, e := ParseShortcut(v.QuickShortcut); e != nil {
 		return e
+	}
+	if _, e := time.Parse("15:04", v.ReminderDefaultTime); e != nil {
+		return errors.New("通知の既定時刻を指定してください")
 	}
 	if v.SuggestMinCount < 0 || v.SuggestMinCount > 100 {
 		return errors.New("候補の最低登録回数は0〜100で指定してください")

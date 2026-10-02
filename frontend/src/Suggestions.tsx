@@ -74,7 +74,7 @@ export function useSuggestions(
     setClosed(title);
     setIndex(-1);
   };
-  const keyDown = (e: React.KeyboardEvent) => {
+  const keyDown = (e: React.KeyboardEvent, enabled = true) => {
     if (
       composing.current ||
       e.nativeEvent.isComposing ||
@@ -82,7 +82,7 @@ export function useSuggestions(
       (performance.now() < commitEnter.current && e.key === "Enter")
     )
       return true;
-    if (!items.length) return false;
+    if (!enabled || !items.length) return false;
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
       setIndex((i) =>

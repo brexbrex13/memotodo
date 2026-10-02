@@ -9,6 +9,7 @@ import (
 	"memotodo/internal/board"
 	"runtime"
 	"sync"
+	"time"
 	"unsafe"
 )
 
@@ -159,5 +160,70 @@ func (a *App) hideQuickNative() {
 			return
 		}
 		user32.NewProc("SetForegroundWindow").Call(previous)
+	})
+}
+
+// Coordinates come from Win32 in physical pixels, as do the native bounds.
+func (a *App) placeQuickAtCursor(capture bool) {
+	application.InvokeSync(func() {
+		if capture {
+			var point struct{ X, Y int32 }
+			ok, _, _ := user32.NewProc("GetCursorPos").Call(uintptr(unsafe.Pointer(&point)))
+			if ok == 0 {
+				return
+			}
+			a.quickX, a.quickY = point.X, point.Y
+		}
+		packed := uintptr(uint64(uint32(a.quickX)) | uint64(uint32(a.quickY))<<32)
+		monitor, _, _ := user32.NewProc("MonitorFromPoint").Call(packed, 2)
+		var info struct {
+			Size          uint32
+			Monitor, Work struct{ Left, Top, Right, Bottom int32 }
+			Flags         uint32
+		}
+		info.Size = uint32(unsafe.Sizeof(info))
+		ok, _, _ := user32.NewProc("GetMonitorInfoW").Call(monitor, uintptr(unsafe.Pointer(&info)))
+		if ok == 0 {
+			return
+		}
+		var rect struct{ Left, Top, Right, Bottom int32 }
+		ok, _, _ = user32.NewProc("GetWindowRect").Call(uintptr(a.mini.NativeWindow()), uintptr(unsafe.Pointer(&rect)))
+		if ok == 0 {
+			return
+		}
+		x, y := a.quickX+12, a.quickY+12
+		width, height := rect.Right-rect.Left, rect.Bottom-rect.Top
+		if x+width > info.Work.Right {
+			x = info.Work.Right - width
+		}
+		if y+height > info.Work.Bottom {
+			y = info.Work.Bottom - height
+		}
+		if x < info.Work.Left {
+			x = info.Work.Left
+		}
+		if y < info.Work.Top {
+			y = info.Work.Top
+		}
+		user32.NewProc("SetWindowPos").Call(uintptr(a.mini.NativeWindow()), 0, uintptr(x), uintptr(y), 0, 0, 0x15)
+	})
+}
+func (a *App) quickLostFocus() {
+	if a.quitting.Load() {
+		return
+	}
+	generation := a.quickGeneration.Load()
+	time.AfterFunc(80*time.Millisecond, func() {
+		application.InvokeSync(func() {
+			if a.quitting.Load() || generation != a.quickGeneration.Load() {
+				return
+			}
+			foreground, _, _ := getForegroundWindow.Call()
+			root, _, _ := user32.NewProc("GetAncestor").Call(foreground, 3)
+			if foreground == uintptr(a.mini.NativeWindow()) || root == uintptr(a.mini.NativeWindow()) {
+				return
+			}
+			a.mini.Hide()
+		})
 	})
 }

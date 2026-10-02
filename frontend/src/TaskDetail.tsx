@@ -8,12 +8,14 @@ import { Icon } from "./Icons";
 export type DraftHandle = { flush: () => Promise<void> };
 export function TaskDetail({
   task,
+  defaultTime,
   categories,
   onClose,
   onSaved,
   onError,
   handle,
 }: {
+  defaultTime?: string;
   task: Task;
   categories: Category[];
   onClose: () => void;
@@ -213,7 +215,11 @@ export function TaskDetail({
         <fieldset className="form-section">
           <legend>期限・通知</legend>
           <div className="formgrid">
-            <ReminderFields value={draft} onChange={change} />
+            <ReminderFields
+              value={draft}
+              onChange={change}
+              defaultTime={defaultTime}
+            />
           </div>
         </fieldset>
         <fieldset className="form-section category-section">
@@ -223,7 +229,6 @@ export function TaskDetail({
             value={draft.category_id}
             onChange={(e) => change({ category_id: +e.target.value })}
           >
-            <option value={0}>未分類</option>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}

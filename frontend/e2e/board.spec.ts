@@ -123,8 +123,8 @@ test("recurring rules without first date, shared lead and separate task list", a
   await page.screenshot({ path: "../docs/screenshots/recurring-list.png" });
   await page.getByLabel("定期設定を閉じる").click();
   await expect(
-    page.locator("article").filter({ hasText: "毎週の報告" }),
-  ).toHaveCount(0);
+    page.locator("article").filter({ hasText: "毎週の報告" }).first(),
+  ).toBeVisible();
   await page.getByRole("button", { name: "定期", exact: true }).click();
   await expect(
     page.locator("article").filter({ hasText: "毎週の報告" }).first(),

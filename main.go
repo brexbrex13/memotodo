@@ -83,6 +83,7 @@ func main() {
 			service.mini.Hide()
 		}
 	})
+	service.mini.OnWindowEvent(events.Windows.WindowInactive, func(*application.WindowEvent) { service.quickLostFocus() })
 	tray.AttachWindow(service.mini).WindowOffset(8)
 	tray.SetTooltip("MemoTodo — クリックでタスク追加／ダブルクリックで一覧")
 	service.tray = tray
@@ -100,7 +101,7 @@ func main() {
 	os.WriteFile(filepath.Join(dir, "notify_icon.png"), icon, 0644)
 	notify.Init(filepath.Join(dir, "notify_icon.png"), func() { service.openMain(0) })
 	service.desktop.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
-		service.shortcut = newShortcutManager(service.showQuickAdd)
+		service.shortcut = newShortcutManager(service.showQuickAtCursor)
 		if v, e := store.Snapshot(); e == nil {
 			if e = service.shortcut.Change(v.Settings.QuickShortcut); e != nil {
 				service.settingsMu.Lock()

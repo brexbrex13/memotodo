@@ -1653,3 +1653,29 @@ button {
 .app-actions .notification-badge { position: absolute; top: -3px; right: -4px; }
 .app-menu .notification-badge { margin-left: auto; }
 .pause-presets { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.app-actions .icon[aria-pressed="true"] { background: var(--hover); color: var(--today); box-shadow: inset 0 0 0 1px var(--border-hover); }
+.task-row .today-toggle { border: 0; background: transparent; }
+.task-filters { display: flex; flex-wrap: wrap; align-items: center; }
+.inline-search { margin-left: auto; display: flex; align-items: center; min-width: 30px; }
+.inline-search.expanded { flex: 1 1 16em; min-width: 16em; }
+.inline-search input { min-width: 0; width: 100%; flex: 1; padding: 5px 8px; }
+.settings-groups h3 { margin: 12px 0 0; border-top: 1px solid var(--border); padding-top: 12px; font-size: 14px; }
+.settings-groups h3:first-child { margin-top: 0; border-top: 0; padding-top: 0; }
+.shortcut-warning { color: var(--today); font-size: 12px; margin: 6px 0 0; }
+.series-row { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 5px 12px; }
+.series-row .series-title { grid-column: 1; grid-row: 1; min-width: 0; text-align: left; }
+.series-row .series-auto-add { grid-column: 2; grid-row: 1; display: flex; gap: 5px; font-size: 12px; margin: 0; padding: 0; }
+.series-row .series-auto-add > span { display: none; }
+.series-row .actions { grid-column: 2; grid-row: 2 / span 2; }
+.row-reopen { flex: 0 0 auto; }
+@media(max-width:480px) { .inline-search.expanded { flex-basis: 100%; } }
+.mini-input { position: relative; }
+.mini-input > input { padding-right: 36px; }
+.mini-clock { position: absolute; right: 3px; top: 3px; padding: 4px; border: 0; background: transparent; }
+.mini-options { display: grid; gap: 9px; margin-top: 12px; }
+.mini-options label { display: grid; gap: 4px; font-size: 12px; }
+.mini-options select { width: 100%; }
+.mini-add { overflow: auto; }
+.mini-options .check { display: flex; align-items: center; }
+.mini-add input[type="checkbox"] { width: auto; padding: 0; }
