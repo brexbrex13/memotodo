@@ -1,22 +1,28 @@
 import { useEffect, useState } from "react";
 import { api } from "./api";
-import { JevStatus } from "./smartAdd";
+import { JevEndpoint, jevProvider, JevStatus } from "./smartAdd";
 const results: Record<string, string> = {
   ok: "接続できました",
   invalid: "キーが無効です",
   unreachable: "接続できません",
 };
-// The key is saved immediately and never comes back from Go; only its last four characters do.
-export function JevKeyField() {
+// Keys are saved per provider immediately and never come back from Go; only their last
+// four characters do. The connection test uses the endpoint as entered, even unsaved.
+export function JevKeyField({ endpoint }: { endpoint: JevEndpoint }) {
+  const provider = jevProvider(endpoint.provider);
   const [status, setStatus] = useState<JevStatus | null>(null),
     [key, setKey] = useState(""),
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false);
   const refresh = () =>
-    api<JevStatus>("GetJevStatus").then((s) => setStatus(s ?? null));
+    api<JevStatus>("GetJevStatus", provider.id).then((s) =>
+      setStatus(s ?? null),
+    );
   useEffect(() => {
+    setKey("");
+    setMessage("");
     void refresh().catch((e) => setMessage(String(e)));
-  }, []);
+  }, [provider.id]);
   const run = async (f: () => Promise<string>) => {
     setBusy(true);
     setMessage("");
@@ -34,7 +40,7 @@ export function JevKeyField() {
   return (
     <div className="wide jev-key">
       <label>
-        Jev APIキー
+        {provider.key}
         <input
           type="password"
           autoComplete="off"
@@ -52,7 +58,7 @@ export function JevKeyField() {
           disabled={busy || !key.trim()}
           onClick={() =>
             void run(async () => {
-              await api("SetJevKey", key);
+              await api("SetJevKey", provider.id, key);
               setKey("");
               return "保存しました";
             })
@@ -64,7 +70,7 @@ export function JevKeyField() {
           disabled={busy || !status?.configured}
           onClick={() =>
             void run(async () => {
-              await api("ClearJevKey");
+              await api("ClearJevKey", provider.id);
               return "削除しました";
             })
           }
@@ -74,7 +80,15 @@ export function JevKeyField() {
         <button
           disabled={busy || !status?.configured}
           onClick={() =>
-            void run(async () => results[await api<string>("TestJevKey")] ?? "")
+            void run(
+              async () =>
+                results[
+                  await api<string>("TestJevKey", {
+                    ...endpoint,
+                    provider: provider.id,
+                  })
+                ] ?? "",
+            )
           }
         >
           接続テスト
@@ -85,7 +99,7 @@ export function JevKeyField() {
       )}
       {message && <p role="status">{message}</p>}
       <p className="jev-note">
-        入力中のタイトル・未完了タスク名・カテゴリ名を TypeSafe AI
+        入力中のタイトル・未完了タスク名・カテゴリ名を {provider.sendTo}{" "}
         に送信します。APIキーはこのPCのユーザーで暗号化して保存し、バックアップには含めません（別のPCへ復元したときは再入力が必要です）。
       </p>
     </div>

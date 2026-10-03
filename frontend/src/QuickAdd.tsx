@@ -101,7 +101,7 @@ export function QuickAdd() {
       void api<Snapshot>("GetSnapshot")
         .then(setSnapshot)
         .catch((e) => setError(String(e)));
-      void api<JevStatus>("GetJevStatus")
+      void api<JevStatus>("GetJevStatus", "")
         .then((s) => setJevStatus(s ?? null))
         .catch(() => setJevStatus(null));
     };

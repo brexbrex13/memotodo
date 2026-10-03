@@ -298,7 +298,7 @@ export default function App() {
   });
   useEffect(() => {
     const load = () =>
-      void api<JevStatus>("GetJevStatus")
+      void api<JevStatus>("GetJevStatus", "")
         .then((s) => setJevStatus(s ?? null))
         .catch(() => setJevStatus(null));
     load();

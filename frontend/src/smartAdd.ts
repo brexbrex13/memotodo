@@ -170,3 +170,37 @@ export function chipLabels(
     });
   return out;
 }
+export type JevEndpoint = {
+  provider: string;
+  account: string;
+  base_url: string;
+  model: string;
+};
+export const jevProviders = [
+  {
+    id: "typesafe",
+    name: "TypeSafe",
+    key: "TypeSafe APIキー",
+    sendTo: "TypeSafe AI",
+  },
+  {
+    id: "vercel",
+    name: "Vercel AI Gateway",
+    key: "AI Gateway APIキー",
+    sendTo: "Vercel AI Gateway",
+  },
+  {
+    id: "cloudflare",
+    name: "Cloudflare Workers AI",
+    key: "Cloudflare APIトークン",
+    sendTo: "Cloudflare",
+  },
+  {
+    id: "custom",
+    name: "カスタム（TypeSafe互換）",
+    key: "APIキー",
+    sendTo: "指定したエンドポイント",
+  },
+];
+export const jevProvider = (id: string) =>
+  jevProviders.find((p) => p.id === (id || "typesafe")) ?? jevProviders[0];
