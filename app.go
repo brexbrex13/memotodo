@@ -8,6 +8,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"log"
 	"memotodo/internal/board"
+	"memotodo/internal/jev"
 	"memotodo/internal/notify"
 	"net/http"
 	"net/url"
@@ -54,8 +55,9 @@ type App struct {
 	stopOnce             sync.Once
 	quitting             atomic.Bool
 	jevKeys              keyStore
-	newJev               func(key string) jevAPI
-	jevInvalid           atomic.Bool
+	newJev               func(ep jev.Endpoint, key string) (jevAPI, error)
+	jevMu                sync.Mutex
+	jevBad               map[string]bool // providers whose saved key was rejected
 }
 
 func (a *App) start() { a.startOnce.Do(func() { a.wg.Add(1); go a.run() }) }

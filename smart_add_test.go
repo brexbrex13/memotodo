@@ -12,17 +12,23 @@ import (
 )
 
 type memKeys struct {
-	key       string
+	raw       string
 	supported bool
 }
 
 func (m *memKeys) Supported() bool       { return m.supported }
-func (m *memKeys) Load() (string, error) { return m.key, nil }
-func (m *memKeys) Save(key string) error { m.key = key; return nil }
-func (m *memKeys) Clear() error          { m.key = ""; return nil }
+func (m *memKeys) Load() (string, error) { return m.raw, nil }
+func (m *memKeys) Save(raw string) error { m.raw = raw; return nil }
+func (m *memKeys) Clear() error          { m.raw = ""; return nil }
+
+func keysJSON(m map[string]string) string {
+	b, _ := json.Marshal(m)
+	return string(b)
+}
 
 type fakeJev struct {
 	keys    []string
+	eps     []jev.Endpoint
 	sent    []int
 	answers map[string]jev.Answer
 	errs    []error
@@ -42,7 +48,8 @@ func (f *fakeJev) Ask(_ context.Context, state any, _ map[string]jev.Question) (
 }
 func (f *fakeJev) Models(context.Context) error { return f.models }
 
-func smartApp(t *testing.T, smart bool, key string) (*App, *fakeJev) {
+// smartApp stores raw as the key file content: a plain string is a legacy TypeSafe key.
+func smartApp(t *testing.T, smart bool, raw string, edit ...func(*board.Settings)) (*App, *fakeJev) {
 	t.Helper()
 	s, e := board.Open(t.TempDir())
 	if e != nil {
@@ -51,40 +58,82 @@ func smartApp(t *testing.T, smart bool, key string) (*App, *fakeJev) {
 	t.Cleanup(func() { s.Close() })
 	v := board.Defaults()
 	v.SmartAdd = smart
+	for _, f := range edit {
+		f(&v)
+	}
 	if e = s.SaveSettings(v); e != nil {
 		t.Fatal(e)
 	}
 	f := &fakeJev{answers: map[string]jev.Answer{"important": {Noul: 0.99}}}
-	a := &App{store: s, jevKeys: &memKeys{key: key, supported: true}}
-	a.newJev = func(k string) jevAPI { f.keys = append(f.keys, k); return f }
+	a := &App{store: s, jevKeys: &memKeys{raw: raw, supported: true}}
+	a.newJev = func(ep jev.Endpoint, k string) (jevAPI, error) {
+		if e := jev.ValidateEndpoint(ep); e != nil {
+			return nil, e
+		}
+		f.eps = append(f.eps, ep)
+		f.keys = append(f.keys, k)
+		return f, nil
+	}
 	return a, f
+}
+
+const account = "0123456789abcdef0123456789abcdef"
+
+func cloudflare(v *board.Settings) {
+	v.JevProvider = "cloudflare"
+	v.JevCloudflareAccount = account
 }
 
 func TestSuggestQuickAddReturnsDecision(t *testing.T) {
 	a, f := smartApp(t, true, "k1")
 	s, e := a.SuggestQuickAdd("大事な用事", 0)
-	if e != nil || !s.Important || len(f.sent) != 1 || f.keys[0] != "k1" {
+	if e != nil || !s.Important || len(f.sent) != 1 || f.keys[0] != "k1" || f.eps[0].Provider != "" {
 		t.Fatalf("%+v %v %v", s, e, f.sent)
+	}
+}
+
+func TestSuggestUsesSelectedProviderAndItsKey(t *testing.T) {
+	a, f := smartApp(t, true, keysJSON(map[string]string{"typesafe": "ts-key", "cloudflare": "cf-key"}), cloudflare)
+	if _, e := a.SuggestTask("大事な用事", true); e != nil {
+		t.Fatal(e)
+	}
+	if len(f.eps) != 1 || f.eps[0].Provider != "cloudflare" || f.eps[0].Account != account || f.keys[0] != "cf-key" {
+		t.Fatalf("%+v %v", f.eps, f.keys)
 	}
 }
 
 func TestSuggestQuickAddIsSilentWhenDisabled(t *testing.T) {
 	for _, tc := range []struct {
 		smart bool
-		key   string
+		raw   string
 		gen   uint64
 		title string
+		edit  func(*board.Settings)
 	}{
-		{false, "k", 0, "x"},
-		{true, "", 0, "x"},
-		{true, "k", 9, "x"},
-		{true, "k", 0, "   "},
+		{false, "k", 0, "x", func(*board.Settings) {}},
+		{true, "", 0, "x", func(*board.Settings) {}},
+		{true, "k", 9, "x", func(*board.Settings) {}},
+		{true, "k", 0, "   ", func(*board.Settings) {}},
+		// The legacy key belongs to TypeSafe, not to the selected Cloudflare provider.
+		{true, "k", 0, "x", cloudflare},
 	} {
-		a, f := smartApp(t, tc.smart, tc.key)
+		a, f := smartApp(t, tc.smart, tc.raw, tc.edit)
 		s, e := a.SuggestQuickAdd(tc.title, tc.gen)
 		if e != nil || s != (smartadd.Suggestion{}) || len(f.sent) != 0 {
 			t.Fatalf("%+v: %+v %v %v", tc, s, e, f.sent)
 		}
+	}
+}
+
+func TestSuggestTaskIgnoresQuickAddGeneration(t *testing.T) {
+	a, f := smartApp(t, true, "k")
+	a.quickGeneration.Store(5)
+	s, e := a.SuggestTask("大事な用事", false)
+	if e != nil || !s.Important || len(f.sent) != 1 {
+		t.Fatalf("%+v %v %v", s, e, f.sent)
+	}
+	if s, _ := a.SuggestTask("  ", true); s != (smartadd.Suggestion{}) || len(f.sent) != 1 {
+		t.Fatal("blank title asked")
 	}
 }
 
@@ -124,14 +173,14 @@ func TestUnauthorizedKeyStaysInvalidUntilSavedAgain(t *testing.T) {
 	if s, _ := a.SuggestQuickAdd("x", 0); !s.Invalid || len(f.sent) != 1 {
 		t.Fatal("asked again with an invalid key")
 	}
-	if !a.GetJevStatus().Invalid {
+	if !a.GetJevStatus("").Invalid || !a.GetJevStatus("typesafe").Invalid {
 		t.Fatal("status not invalid")
 	}
-	if e := a.SetJevKey("  good-key-5678 \n"); e != nil {
+	if e := a.SetJevKey("typesafe", "  good-key-5678 \n"); e != nil {
 		t.Fatal(e)
 	}
-	st := a.GetJevStatus()
-	if st.Invalid || !st.Configured || st.Hint != "5678" || a.jevKeys.(*memKeys).key != "good-key-5678" {
+	st := a.GetJevStatus("typesafe")
+	if st.Invalid || !st.Configured || st.Hint != "5678" || a.jevKeyFor("typesafe") != "good-key-5678" {
 		t.Fatalf("%+v", st)
 	}
 	if s, _ := a.SuggestQuickAdd("x", 0); s.Invalid || len(f.sent) != 2 {
@@ -139,26 +188,59 @@ func TestUnauthorizedKeyStaysInvalidUntilSavedAgain(t *testing.T) {
 	}
 }
 
+func TestInvalidIsTrackedPerProvider(t *testing.T) {
+	a, f := smartApp(t, true, keysJSON(map[string]string{"typesafe": "ts-key", "cloudflare": "cf-key"}), cloudflare)
+	f.errs = []error{jev.ErrUnauthorized}
+	if s, _ := a.SuggestTask("x", true); !s.Invalid {
+		t.Fatalf("%+v", s)
+	}
+	if !a.GetJevStatus("cloudflare").Invalid || a.GetJevStatus("typesafe").Invalid {
+		t.Fatal("invalid leaked across providers")
+	}
+}
+
+func TestKeysAreKeptPerProviderAndLegacyKeyIsMigrated(t *testing.T) {
+	a, _ := smartApp(t, true, "legacy-ts-key")
+	if st := a.GetJevStatus("typesafe"); !st.Configured || st.Hint != "-key" {
+		t.Fatalf("%+v", st)
+	}
+	if e := a.SetJevKey("cloudflare", "cf-token-1234"); e != nil {
+		t.Fatal(e)
+	}
+	if a.jevKeyFor("typesafe") != "legacy-ts-key" || a.jevKeyFor("cloudflare") != "cf-token-1234" || a.GetJevStatus("vercel").Configured {
+		t.Fatal(a.jevKeys.(*memKeys).raw)
+	}
+	if e := a.ClearJevKey("typesafe"); e != nil {
+		t.Fatal(e)
+	}
+	if a.GetJevStatus("typesafe").Configured || !a.GetJevStatus("cloudflare").Configured {
+		t.Fatal(a.jevKeys.(*memKeys).raw)
+	}
+	if e := a.SetJevKey("openai", "x"); e == nil {
+		t.Fatal("unknown provider accepted")
+	}
+}
+
 func TestSetJevKeyRejectsBlankAndClearWorks(t *testing.T) {
 	a, _ := smartApp(t, true, "old-key-1234")
-	if e := a.SetJevKey(" \n "); e == nil {
+	if e := a.SetJevKey("typesafe", " \n "); e == nil {
 		t.Fatal("blank key accepted")
 	}
-	if e := a.ClearJevKey(); e != nil || a.GetJevStatus().Configured {
+	if e := a.ClearJevKey("typesafe"); e != nil || a.GetJevStatus("").Configured {
 		t.Fatal(e)
 	}
 }
 
 func TestJevStatusHidesShortKeysAndReportsUnsupported(t *testing.T) {
 	a, _ := smartApp(t, true, "abc")
-	if st := a.GetJevStatus(); !st.Configured || st.Hint != "" {
+	if st := a.GetJevStatus(""); !st.Configured || st.Hint != "" {
 		t.Fatalf("%+v", st)
 	}
 	a.jevKeys = &memKeys{supported: false}
-	if st := a.GetJevStatus(); st.Supported || st.Configured {
+	if st := a.GetJevStatus(""); st.Supported || st.Configured {
 		t.Fatalf("%+v", st)
 	}
-	if st := (&App{}).GetJevStatus(); st.Supported {
+	if st := (&App{}).GetJevStatus("typesafe"); st.Supported {
 		t.Fatalf("%+v", st)
 	}
 }
@@ -170,16 +252,22 @@ func TestTestJevKeyResults(t *testing.T) {
 		want string
 	}{{nil, "ok"}, {jev.ErrUnauthorized, "invalid"}, {errors.New("dns"), "unreachable"}} {
 		f.models = tc.err
-		if got, e := a.TestJevKey(); e != nil || got != tc.want {
+		if got, e := a.TestJevKey(jev.Endpoint{}); e != nil || got != tc.want {
 			t.Fatal(tc.want, got, e)
 		}
 	}
-	if !a.GetJevStatus().Invalid {
+	if !a.GetJevStatus("").Invalid {
 		t.Fatal("invalid not remembered")
 	}
-	a.jevKeys = &memKeys{supported: true}
-	if _, e := a.TestJevKey(); e == nil {
-		t.Fatal("no key accepted")
+	if _, e := a.TestJevKey(jev.Endpoint{Provider: "vercel"}); e == nil {
+		t.Fatal("missing vercel key accepted")
+	}
+	a.SetJevKey("cloudflare", "cf")
+	if _, e := a.TestJevKey(jev.Endpoint{Provider: "cloudflare", Account: "bad"}); e == nil {
+		t.Fatal("bad account accepted")
+	}
+	if got, e := a.TestJevKey(jev.Endpoint{Provider: "cloudflare", Account: account}); e != nil || got != "unreachable" || f.eps[len(f.eps)-1].Account != account {
+		t.Fatal(got, e)
 	}
 }
 
@@ -204,17 +292,5 @@ func TestQuickAddHeight(t *testing.T) {
 		if got := quickAddHeight(tc.options, tc.rows); got != tc.want {
 			t.Fatal(tc, got)
 		}
-	}
-}
-
-func TestSuggestTaskIgnoresQuickAddGeneration(t *testing.T) {
-	a, f := smartApp(t, true, "k")
-	a.quickGeneration.Store(5)
-	s, e := a.SuggestTask("大事な用事", false)
-	if e != nil || !s.Important || len(f.sent) != 1 {
-		t.Fatalf("%+v %v %v", s, e, f.sent)
-	}
-	if s, _ := a.SuggestTask("  ", true); s != (smartadd.Suggestion{}) || len(f.sent) != 1 {
-		t.Fatal("blank title asked")
 	}
 }
