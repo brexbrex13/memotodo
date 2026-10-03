@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -57,6 +58,7 @@ func Choice(instructions string, options []Option) Question {
 }
 
 type Answer struct {
+	Generated     bool               `json:"-"` // accepted generation; not a calibrated probability
 	Type          string             `json:"type"`
 	Noul          float64            `json:"noul"`
 	Choice        string             `json:"choice"`
@@ -65,18 +67,22 @@ type Answer struct {
 	Probabilities map[string]float64 `json:"probabilities"`
 }
 
-// Endpoint names where Jev is served. Provider "" means TypeSafe; Account is used by
-// Cloudflare, BaseURL and Model by a custom TypeSafe-compatible endpoint.
+// Endpoint selects a Jev or OpenAI-compatible connection. Provider "" means TypeSafe.
+// Account is used by Cloudflare; BaseURL and Model by user-defined connections.
 type Endpoint struct {
-	Provider string `json:"provider"`
-	Account  string `json:"account"`
-	BaseURL  string `json:"base_url"`
-	Model    string `json:"model"`
+	TimeoutSeconds int    `json:"timeout_seconds,omitempty"`
+	Provider       string `json:"provider"`
+	Account        string `json:"account"`
+	BaseURL        string `json:"base_url"`
+	Model          string `json:"model"`
 }
 
 var cloudflareAccount = regexp.MustCompile(`^[0-9a-fA-F]{32}$`)
 
 func ValidateEndpoint(ep Endpoint) error {
+	if ep.TimeoutSeconds < 0 || ep.TimeoutSeconds > 120 {
+		return errors.New("AIの待ち時間は0〜120秒で指定してください")
+	}
 	switch ep.Provider {
 	case "", "typesafe", "vercel":
 		return nil
@@ -85,11 +91,14 @@ func ValidateEndpoint(ep Endpoint) error {
 			return errors.New("CloudflareのアカウントIDは英数字32桁で入力してください")
 		}
 		return nil
-	case "custom":
+	case "custom", "openai", "local":
 		u, e := url.Parse(ep.BaseURL)
-		local := e == nil && u.Scheme == "http" && (u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1")
-		if e != nil || u.Host == "" || (u.Scheme != "https" && !local) {
+		local := e == nil && u.Scheme == "http" && (u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1" || u.Hostname() == "::1")
+		if e != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Scheme != "https" && !local) {
 			return errors.New("ベースURLは https:// で入力してください（http は localhost のみ）")
+		}
+		if ep.Provider == "local" && !isLoopback(u.Hostname()) {
+			return errors.New("ローカルAIは localhost・127.0.0.1・[::1] を指定してください")
 		}
 		if strings.TrimSpace(ep.Model) == "" {
 			return errors.New("モデル名を入力してください")
@@ -100,12 +109,13 @@ func ValidateEndpoint(ep Endpoint) error {
 }
 
 type Client struct {
-	AskURL    string
-	ModelsURL string // empty: probe with a one-question Ask
-	Model     string
-	Key       string
-	Wrap      bool // Cloudflare: send {model, input}, answers may sit under "result"
-	HTTP      *http.Client
+	AskURL     string
+	ModelsURL  string // empty: probe with a one-question Ask
+	Model      string
+	Key        string
+	Compatible bool // OpenAI-compatible Chat Completions
+	Wrap       bool // Cloudflare: send {model, input}, answers may sit under "result"
+	HTTP       *http.Client
 }
 
 func New(key string) *Client {
@@ -117,12 +127,15 @@ func NewFor(ep Endpoint, key string) (*Client, error) {
 	if e := ValidateEndpoint(ep); e != nil {
 		return nil, e
 	}
-	c := &Client{Key: key, HTTP: http.DefaultClient}
+	c := &Client{Key: key, HTTP: &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 	switch ep.Provider {
 	case "vercel":
 		c.AskURL, c.ModelsURL, c.Model = "https://ai-gateway.vercel.sh/typesafe/v1/systemone", "https://ai-gateway.vercel.sh/typesafe/v1/models", "typesafe-ai/jev"
 	case "cloudflare":
 		c.AskURL, c.Model, c.Wrap = "https://api.cloudflare.com/client/v4/accounts/"+ep.Account+"/ai/run", "typesafe/jev", true
+	case "openai", "local":
+		base := strings.TrimRight(ep.BaseURL, "/")
+		c.AskURL, c.Model, c.Compatible = base+"/chat/completions", strings.TrimSpace(ep.Model), true
 	case "custom":
 		base := strings.TrimRight(ep.BaseURL, "/")
 		c.AskURL, c.ModelsURL, c.Model = base+"/v1/systemone", base+"/v1/models", strings.TrimSpace(ep.Model)
@@ -133,6 +146,9 @@ func NewFor(ep Endpoint, key string) (*Client, error) {
 }
 
 func (c *Client) Ask(ctx context.Context, state any, questions map[string]Question) (map[string]Answer, error) {
+	if c.Compatible {
+		return c.askCompatible(ctx, state, questions)
+	}
 	payload := map[string]any{"model": c.Model, "state": state, "questions": questions}
 	if c.Wrap {
 		payload = map[string]any{"model": c.Model, "input": map[string]any{"state": state, "questions": questions}}
@@ -157,6 +173,10 @@ func (c *Client) Ask(ctx context.Context, state any, questions map[string]Questi
 }
 
 func (c *Client) Models(ctx context.Context) error {
+	if c.Compatible {
+		_, e := c.Ask(ctx, "connection test", map[string]Question{"ok": Noul("接続テストです。true を返してください。", "yes", "no")})
+		return e
+	}
 	if c.ModelsURL == "" {
 		_, e := c.Ask(ctx, "connection test", map[string]Question{"ok": Noul("This is a connection test.", "yes", "no")})
 		return e
@@ -173,7 +193,9 @@ func (c *Client) do(ctx context.Context, method, target string, body []byte, out
 	if e != nil {
 		return e
 	}
-	req.Header.Set("Authorization", "Bearer "+c.Key)
+	if c.Key != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Key)
+	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -192,7 +214,7 @@ func (c *Client) do(ctx context.Context, method, target string, body []byte, out
 	case res.StatusCode == http.StatusBadRequest && bytes.Contains(b, []byte("max_tokens_exceeded")):
 		return ErrTooLarge
 	case res.StatusCode/100 != 2:
-		return fmt.Errorf("jev: HTTP %d: %s", res.StatusCode, b[:min(len(b), 200)])
+		return fmt.Errorf("AI: HTTP %d", res.StatusCode)
 	}
 	if out == nil {
 		return nil
@@ -201,4 +223,24 @@ func (c *Client) do(ctx context.Context, method, target string, body []byte, out
 		return fmt.Errorf("jev: bad response: %w", e)
 	}
 	return nil
+}
+
+func isLoopback(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// KeySlot binds user-defined endpoints to their own credentials.
+func KeySlot(ep Endpoint) string {
+	p := ep.Provider
+	if p == "" {
+		p = "typesafe"
+	}
+	if p == "openai" || p == "local" {
+		return p + "@" + strings.TrimRight(strings.TrimSpace(ep.BaseURL), "/")
+	}
+	return p
 }

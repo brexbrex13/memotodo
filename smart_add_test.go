@@ -8,7 +8,9 @@ import (
 	"memotodo/internal/jev"
 	"memotodo/internal/smartadd"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 type memKeys struct {
@@ -292,5 +294,111 @@ func TestQuickAddHeight(t *testing.T) {
 		if got := quickAddHeight(tc.options, tc.rows); got != tc.want {
 			t.Fatal(tc, got)
 		}
+	}
+}
+
+type callbackJev struct{ ask func() error }
+
+func (c callbackJev) Ask(context.Context, any, map[string]jev.Question) (map[string]jev.Answer, error) {
+	e := c.ask()
+	return map[string]jev.Answer{"important": {Noul: 1}}, e
+}
+func (c callbackJev) Models(context.Context) error { return c.ask() }
+
+func TestOldUnauthorizedResponseCannotInvalidateNewKey(t *testing.T) {
+	a, _ := smartApp(t, true, "old-key-1234")
+	a.newJev = func(jev.Endpoint, string) (jevAPI, error) {
+		return callbackJev{ask: func() error {
+			if e := a.SetJevKey("typesafe", "new-key-5678"); e != nil {
+				t.Fatal(e)
+			}
+			return jev.ErrUnauthorized
+		}}, nil
+	}
+	s, e := a.SuggestTask("提出する", true)
+	if e != nil || s != (smartadd.Suggestion{}) || a.GetJevStatus("").Invalid {
+		t.Fatal(s, e)
+	}
+}
+
+func TestDisabledDuringRequestDiscardsAnswer(t *testing.T) {
+	a, _ := smartApp(t, true, "key-1234")
+	a.newJev = func(jev.Endpoint, string) (jevAPI, error) {
+		return callbackJev{ask: func() error {
+			snap, e := a.store.Snapshot()
+			if e != nil {
+				return e
+			}
+			snap.Settings.SmartAdd = false
+			return a.store.SaveSettings(snap.Settings)
+		}}, nil
+	}
+	s, e := a.SuggestTask("提出する", true)
+	if e != nil || s != (smartadd.Suggestion{}) {
+		t.Fatal(s, e)
+	}
+}
+
+func TestLocalAIWithoutKeyAndScopedCredentials(t *testing.T) {
+	ep := jev.Endpoint{Provider: "local", BaseURL: "http://localhost:1234/v1", Model: "m"}
+	a, f := smartApp(t, true, "", func(v *board.Settings) {
+		v.JevProvider = ep.Provider
+		v.JevCustomURL = ep.BaseURL
+		v.JevCustomModel = ep.Model
+	})
+	if st := a.GetJevStatus(""); !st.Configured || !st.Supported {
+		t.Fatal(st)
+	}
+	s, e := a.SuggestTask("提出する", true)
+	if e != nil || !s.Important || len(f.sent) != 1 || f.keys[0] != "" {
+		t.Fatal(s, e, f)
+	}
+	if _, e := a.TestJevKey(ep); e != nil {
+		t.Fatal(e)
+	}
+	if e := a.SetJevKey("openai@https://a.example/v1", "secret-a"); e != nil {
+		t.Fatal(e)
+	}
+	if a.GetJevStatus("openai@https://b.example/v1").Configured {
+		t.Fatal("key shared across hosts")
+	}
+}
+
+type contextualJev struct {
+	ask func(context.Context) (map[string]jev.Answer, error)
+}
+
+func (c contextualJev) Ask(ctx context.Context, _ any, _ map[string]jev.Question) (map[string]jev.Answer, error) {
+	return c.ask(ctx)
+}
+func (c contextualJev) Models(context.Context) error { return nil }
+func TestNewInputCancelsOlderInferenceInSameWindow(t *testing.T) {
+	a, _ := smartApp(t, true, "key-1234")
+	started := make(chan struct{})
+	done := make(chan smartadd.Suggestion, 1)
+	var calls atomic.Int32
+	a.newJev = func(jev.Endpoint, string) (jevAPI, error) {
+		return contextualJev{ask: func(ctx context.Context) (map[string]jev.Answer, error) {
+			if calls.Add(1) == 1 {
+				close(started)
+				<-ctx.Done()
+				return nil, ctx.Err()
+			}
+			return map[string]jev.Answer{"important": {Noul: 1}}, nil
+		}}, nil
+	}
+	go func() { s, _ := a.SuggestTask("最初の入力", true); done <- s }()
+	<-started
+	s, e := a.SuggestTask("変更後の入力", true)
+	if e != nil || !s.Important {
+		t.Fatal(s, e)
+	}
+	select {
+	case old := <-done:
+		if old != (smartadd.Suggestion{}) {
+			t.Fatal(old)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("older inference was not cancelled")
 	}
 }

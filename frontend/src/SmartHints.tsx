@@ -34,7 +34,7 @@ export function SmartHints({
       )}
       {smart.invalid && (
         <p className="smart-invalid" role="status">
-          Jevのキーが無効です（設定で確認）
+          AIのキーが無効です（設定で確認）
         </p>
       )}
     </>

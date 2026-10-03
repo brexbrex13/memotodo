@@ -141,16 +141,16 @@ func Build(s board.Snapshot, title string, limit int, askCategory bool) Request 
 
 func Decide(r Request, answers map[string]jev.Answer) Suggestion {
 	var s Suggestion
-	if a, ok := answers["category"]; ok && a.Confidence >= CategoryMin {
+	if a, ok := answers["category"]; ok && (a.Generated || a.Confidence >= CategoryMin) {
 		s.CategoryID = r.categories[a.Choice]
 	}
 	if a, ok := answers["important"]; ok && a.Noul >= ImportantMin {
 		s.Important = true
 	}
-	if a, ok := answers["deadline"]; ok && a.Confidence >= DeadlineMin && known(deadlineOptions, a.Choice) && a.Choice != "none" {
+	if a, ok := answers["deadline"]; ok && (a.Generated || a.Confidence >= DeadlineMin) && known(deadlineOptions, a.Choice) && a.Choice != "none" {
 		s.Deadline = a.Choice
 	}
-	if a, ok := answers["reminder"]; ok && a.Confidence >= ReminderMin && known(reminderOptions, a.Choice) && a.Choice != "off" {
+	if a, ok := answers["reminder"]; ok && (a.Generated || a.Confidence >= ReminderMin) && known(reminderOptions, a.Choice) && a.Choice != "off" {
 		s.Reminder = a.Choice
 	}
 	if s.Reminder == "deadline" && s.Deadline == "" {
@@ -159,7 +159,7 @@ func Decide(r Request, answers map[string]jev.Answer) Suggestion {
 	if r.exact != nil {
 		d := *r.exact
 		s.Duplicate = &d
-	} else if a, ok := answers["duplicate"]; ok && a.Confidence >= DuplicateMin {
+	} else if a, ok := answers["duplicate"]; ok && (a.Generated || a.Confidence >= DuplicateMin) {
 		if d, ok := r.tasks[a.Choice]; ok {
 			s.Duplicate = &d
 		}

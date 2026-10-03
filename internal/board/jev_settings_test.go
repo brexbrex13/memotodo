@@ -31,7 +31,7 @@ func TestJevProviderSettingsValidation(t *testing.T) {
 		}
 	}
 	for _, v := range []Settings{
-		ok(func(v *Settings) { v.JevProvider = "openai" }),
+		ok(func(v *Settings) { v.JevProvider = "unknown-provider" }),
 		ok(func(v *Settings) { v.SmartAdd = true; v.JevProvider = "cloudflare" }),
 		ok(func(v *Settings) { v.SmartAdd = true; v.JevProvider = "custom"; v.JevCustomURL = "http://jev.example.com"; v.JevCustomModel = "m" }),
 	} {

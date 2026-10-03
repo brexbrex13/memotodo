@@ -164,70 +164,6 @@ export function SettingsForm({
               value={v.quick_shortcut ?? "Ctrl+Alt+N"}
               onChange={(quick_shortcut) => patch({ quick_shortcut })}
             />
-            <h3 className="wide">スマート追加（Jev）</h3>
-            <label className="check wide">
-              <input
-                type="checkbox"
-                checked={!!v.smart_add}
-                onChange={(e) => patch({ smart_add: e.target.checked })}
-              />
-              タスク追加時にカテゴリ・重要・期限・通知を推定し、似たタスクを知らせる
-            </label>
-            <label>
-              プロバイダー
-              <select
-                aria-label="Jevのプロバイダー"
-                value={jevProvider(v.jev_provider ?? "").id}
-                onChange={(e) => patch({ jev_provider: e.target.value })}
-              >
-                {jevProviders.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {v.jev_provider === "cloudflare" && (
-              <label>
-                CloudflareのアカウントID
-                <input
-                  value={v.jev_cloudflare_account ?? ""}
-                  placeholder="英数字32桁"
-                  onChange={(e) =>
-                    patch({ jev_cloudflare_account: e.target.value })
-                  }
-                />
-              </label>
-            )}
-            {v.jev_provider === "custom" && (
-              <>
-                <label>
-                  ベースURL
-                  <input
-                    value={v.jev_custom_url ?? ""}
-                    placeholder="https://…（/v1/systemone の手前まで）"
-                    onChange={(e) => patch({ jev_custom_url: e.target.value })}
-                  />
-                </label>
-                <label>
-                  モデル名
-                  <input
-                    value={v.jev_custom_model ?? ""}
-                    onChange={(e) =>
-                      patch({ jev_custom_model: e.target.value })
-                    }
-                  />
-                </label>
-              </>
-            )}
-            <JevKeyField
-              endpoint={{
-                provider: jevProvider(v.jev_provider ?? "").id,
-                account: (v.jev_cloudflare_account ?? "").trim(),
-                base_url: (v.jev_custom_url ?? "").trim(),
-                model: (v.jev_custom_model ?? "").trim(),
-              }}
-            />
             <h3 className="wide">表示</h3>
             <label>
               文字サイズ
@@ -306,6 +242,151 @@ export function SettingsForm({
           >
             バックアップZIPから復元
           </button>
+          <div className="formgrid settings-groups ai-settings">
+            <h3 className="wide">AI対応</h3>
+            <label className="check wide">
+              <input
+                type="checkbox"
+                checked={!!v.smart_add}
+                onChange={(e) => patch({ smart_add: e.target.checked })}
+              />
+              タスク追加時にカテゴリ・重要・期限・通知を推定し、似たタスクを知らせる
+            </label>
+            <label>
+              プロバイダー
+              <select
+                aria-label="AIの接続方式"
+                value={jevProvider(v.jev_provider ?? "").id}
+                onChange={(e) => {
+                  const provider = e.target.value;
+                  patch({
+                    jev_provider: provider,
+                    ...(provider === "openai" || provider === "local"
+                      ? {
+                          jev_custom_url:
+                            provider === "local"
+                              ? "http://localhost:1234/v1"
+                              : "https://api.openai.com/v1",
+                          jev_custom_model: "",
+                        }
+                      : {}),
+                  });
+                }}
+              >
+                {jevProviders.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {v.jev_provider === "cloudflare" && (
+              <label>
+                CloudflareのアカウントID
+                <input
+                  value={v.jev_cloudflare_account ?? ""}
+                  placeholder="英数字32桁"
+                  onChange={(e) =>
+                    patch({ jev_cloudflare_account: e.target.value })
+                  }
+                />
+              </label>
+            )}
+            {["custom", "openai", "local"].includes(v.jev_provider ?? "") && (
+              <>
+                {v.jev_provider === "openai" && (
+                  <div className="wide actions">
+                    <button
+                      onClick={() =>
+                        patch({
+                          jev_custom_url: "https://api.openai.com/v1",
+                          jev_custom_model: "",
+                        })
+                      }
+                    >
+                      OpenAIのURL
+                    </button>
+                    <button
+                      onClick={() =>
+                        patch({
+                          jev_custom_url:
+                            "https://generativelanguage.googleapis.com/v1beta/openai",
+                          jev_custom_model: "",
+                        })
+                      }
+                    >
+                      GeminiのURL
+                    </button>
+                  </div>
+                )}
+                {v.jev_provider === "local" && (
+                  <div className="wide actions">
+                    <button
+                      onClick={() =>
+                        patch({
+                          jev_custom_url: "http://localhost:1234/v1",
+                          jev_custom_model: "",
+                        })
+                      }
+                    >
+                      LM StudioのURL
+                    </button>
+                    <button
+                      onClick={() =>
+                        patch({
+                          jev_custom_url: "http://localhost:11434/v1",
+                          jev_custom_model: "",
+                        })
+                      }
+                    >
+                      OllamaのURL
+                    </button>
+                  </div>
+                )}
+                <label>
+                  ベースURL
+                  <input
+                    value={v.jev_custom_url ?? ""}
+                    placeholder={
+                      v.jev_provider === "custom"
+                        ? "https://…（/v1/systemone の手前まで）"
+                        : "https://…/v1（/chat/completions の手前まで）"
+                    }
+                    onChange={(e) => patch({ jev_custom_url: e.target.value })}
+                  />
+                </label>
+                <label>
+                  モデル名
+                  <input
+                    value={v.jev_custom_model ?? ""}
+                    onChange={(e) =>
+                      patch({ jev_custom_model: e.target.value })
+                    }
+                  />
+                </label>
+              </>
+            )}
+            <label>
+              AIの待ち時間（秒）
+              <input
+                type="number"
+                min={0}
+                max={120}
+                value={v.ai_timeout_seconds ?? 0}
+                onChange={(e) => patch({ ai_timeout_seconds: +e.target.value })}
+                data-tip="0は自動：Jevは1.5秒、OpenAI互換・ローカルAIは20秒。入力・登録は待ちません。"
+              />
+            </label>
+            <JevKeyField
+              endpoint={{
+                timeout_seconds: v.ai_timeout_seconds ?? 0,
+                provider: jevProvider(v.jev_provider ?? "").id,
+                account: (v.jev_cloudflare_account ?? "").trim(),
+                base_url: (v.jev_custom_url ?? "").trim(),
+                model: (v.jev_custom_model ?? "").trim(),
+              }}
+            />
+          </div>
         </div>
         <footer>
           {saveError && (
