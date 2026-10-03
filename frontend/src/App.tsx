@@ -290,7 +290,14 @@ export default function App() {
     defaultTime: data?.settings.reminder_default_time || "09:00",
     categories: data?.categories ?? [],
     ask: (title) => api<Suggestion>("SuggestTask", title, category <= 0),
-    scope: category > 0 ? "tab" : "all",
+    scope: JSON.stringify([
+      category,
+      data?.settings.jev_provider,
+      data?.settings.jev_custom_url,
+      data?.settings.jev_custom_model,
+      data?.settings.ai_timeout_seconds,
+      jevStatus?.revision,
+    ]),
     hide: [
       ...(category > 0 ? (["category"] as const) : []),
       ...(important ? (["important"] as const) : []),

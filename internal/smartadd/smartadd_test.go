@@ -159,3 +159,11 @@ func TestBuildWithoutCategorySendsNoCategories(t *testing.T) {
 		t.Fatal(s.CategoryID)
 	}
 }
+
+func TestGeneratedChoicesUseValidationWithoutCalibratedConfidence(t *testing.T) {
+	r := Build(snap(), "明日までに提出", MaxOpenTasks, true)
+	s := Decide(r, map[string]jev.Answer{"deadline": {Choice: "tomorrow", Generated: true}, "category": {Choice: "unknown", Generated: true}, "reminder": {Choice: "invalid", Generated: true}})
+	if s.Deadline != "tomorrow" || s.CategoryID != 0 || s.Reminder != "" {
+		t.Fatal(s)
+	}
+}

@@ -92,7 +92,8 @@ type Settings struct {
 	FontSize            int           `json:"font_size"`
 	Compact             bool          `json:"compact"`
 	Collapsed           []int64       `json:"collapsed"`
-	Monitor             string        `json:"monitor"` // active, primary, screen ID
+	Monitor             string        `json:"monitor"`            // active, primary, screen ID
+	AITimeoutSeconds    int           `json:"ai_timeout_seconds"` // 0 selects provider default
 	SmartAdd            bool          `json:"smart_add"`
 	// Jev endpoint details are not secret; API keys live outside settings.
 	JevProvider          string `json:"jev_provider"` // "", typesafe, vercel, cloudflare, custom
@@ -102,7 +103,7 @@ type Settings struct {
 }
 
 func (v Settings) JevEndpoint() jev.Endpoint {
-	return jev.Endpoint{Provider: v.JevProvider, Account: v.JevCloudflareAccount, BaseURL: v.JevCustomURL, Model: v.JevCustomModel}
+	return jev.Endpoint{TimeoutSeconds: v.AITimeoutSeconds, Provider: v.JevProvider, Account: v.JevCloudflareAccount, BaseURL: v.JevCustomURL, Model: v.JevCustomModel}
 }
 
 type Snapshot struct {
