@@ -1,6 +1,9 @@
 package board
 
-import "time"
+import (
+	"memotodo/internal/jev"
+	"time"
+)
 
 type Task struct {
 	ID           int64  `json:"id"`
@@ -91,7 +94,17 @@ type Settings struct {
 	Collapsed           []int64       `json:"collapsed"`
 	Monitor             string        `json:"monitor"` // active, primary, screen ID
 	SmartAdd            bool          `json:"smart_add"`
+	// Jev endpoint details are not secret; API keys live outside settings.
+	JevProvider          string `json:"jev_provider"` // "", typesafe, vercel, cloudflare, custom
+	JevCloudflareAccount string `json:"jev_cloudflare_account"`
+	JevCustomURL         string `json:"jev_custom_url"`
+	JevCustomModel       string `json:"jev_custom_model"`
 }
+
+func (v Settings) JevEndpoint() jev.Endpoint {
+	return jev.Endpoint{Provider: v.JevProvider, Account: v.JevCloudflareAccount, BaseURL: v.JevCustomURL, Model: v.JevCustomModel}
+}
+
 type Snapshot struct {
 	Tasks         []Task         `json:"tasks"`
 	Categories    []Category     `json:"categories"`
