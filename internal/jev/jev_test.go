@@ -27,7 +27,8 @@ func serve(t *testing.T, status int, body string, seen *[]byte, header *http.Hea
 	}))
 	t.Cleanup(srv.Close)
 	c := New("secret-key")
-	c.BaseURL = srv.URL
+	c.AskURL = srv.URL + "/v1/systemone"
+	c.ModelsURL = srv.URL + "/v1/models"
 	return c
 }
 
@@ -117,10 +118,90 @@ func TestAskHonoursContextDeadline(t *testing.T) {
 	}))
 	defer srv.Close()
 	c := New("k")
-	c.BaseURL = srv.URL
+	c.AskURL = srv.URL
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 	if _, e := c.Ask(ctx, "s", map[string]Question{}); !errors.Is(e, context.DeadlineExceeded) {
+		t.Fatal(e)
+	}
+}
+
+func TestNewForBuildsProviderEndpoints(t *testing.T) {
+	account := "0123456789abcdef0123456789ABCDEF"
+	for _, tc := range []struct {
+		ep                 Endpoint
+		ask, models, model string
+		wrap               bool
+	}{
+		{Endpoint{}, "https://api.typesafe.ai/v1/systemone", "https://api.typesafe.ai/v1/models", "jev-latest", false},
+		{Endpoint{Provider: "typesafe"}, "https://api.typesafe.ai/v1/systemone", "https://api.typesafe.ai/v1/models", "jev-latest", false},
+		{Endpoint{Provider: "vercel"}, "https://ai-gateway.vercel.sh/typesafe/v1/systemone", "https://ai-gateway.vercel.sh/typesafe/v1/models", "typesafe-ai/jev", false},
+		{Endpoint{Provider: "cloudflare", Account: account}, "https://api.cloudflare.com/client/v4/accounts/" + account + "/ai/run", "", "typesafe/jev", true},
+		{Endpoint{Provider: "custom", BaseURL: "https://jev.example.com/api/", Model: "my-jev"}, "https://jev.example.com/api/v1/systemone", "https://jev.example.com/api/v1/models", "my-jev", false},
+		{Endpoint{Provider: "custom", BaseURL: "http://localhost:8787", Model: "m"}, "http://localhost:8787/v1/systemone", "http://localhost:8787/v1/models", "m", false},
+	} {
+		c, e := NewFor(tc.ep, "k")
+		if e != nil {
+			t.Fatal(tc.ep, e)
+		}
+		if c.AskURL != tc.ask || c.ModelsURL != tc.models || c.Model != tc.model || c.Wrap != tc.wrap || c.Key != "k" {
+			t.Fatalf("%+v: %+v", tc.ep, c)
+		}
+	}
+}
+
+func TestValidateEndpointRejectsIncompleteOrUnsafeSettings(t *testing.T) {
+	for _, ep := range []Endpoint{
+		{Provider: "openai"},
+		{Provider: "cloudflare"},
+		{Provider: "cloudflare", Account: "not-hex"},
+		{Provider: "custom", Model: "m"},
+		{Provider: "custom", BaseURL: "http://jev.example.com", Model: "m"},
+		{Provider: "custom", BaseURL: "ftp://localhost", Model: "m"},
+		{Provider: "custom", BaseURL: "https://jev.example.com"},
+	} {
+		if e := ValidateEndpoint(ep); e == nil {
+			t.Fatalf("%+v accepted", ep)
+		}
+		if _, e := NewFor(ep, "k"); e == nil {
+			t.Fatalf("NewFor %+v accepted", ep)
+		}
+	}
+}
+
+func TestCloudflareWrapsInputAndUnwrapsResult(t *testing.T) {
+	var body []byte
+	c := serve(t, 200, `{"result":{"model":"typesafe/jev","answers":{"imp":{"type":"noul","noul":0.8}}},"success":true,"errors":[]}`, &body, nil)
+	c.Wrap = true
+	c.Model = "typesafe/jev"
+	got, e := c.Ask(context.Background(), "s", map[string]Question{"imp": Noul("i", "y", "n")})
+	if e != nil || got["imp"].Noul != 0.8 {
+		t.Fatal(got, e)
+	}
+	if !strings.Contains(string(body), `"input":{"questions":{"imp":`) || !strings.Contains(string(body), `"model":"typesafe/jev"`) || strings.Contains(string(body), `{"model":"typesafe/jev","questions"`) {
+		t.Fatal(string(body))
+	}
+	c = serve(t, 200, `{"model":"typesafe/jev","answers":{"imp":{"type":"noul","noul":0.6}}}`, nil, nil)
+	c.Wrap = true
+	if got, e = c.Ask(context.Background(), "s", map[string]Question{}); e != nil || got["imp"].Noul != 0.6 {
+		t.Fatal(got, e)
+	}
+}
+
+func TestModelsProbesWithAskWhenNoModelsEndpoint(t *testing.T) {
+	var body []byte
+	var header http.Header
+	c := serve(t, 200, `{"answers":{"ok":{"type":"noul","noul":0.9}}}`, &body, &header)
+	c.ModelsURL = ""
+	if e := c.Models(context.Background()); e != nil {
+		t.Fatal(e)
+	}
+	if header.Get("X-Path") != "POST /v1/systemone" || !strings.Contains(string(body), `"type":"noul"`) {
+		t.Fatal(header, string(body))
+	}
+	c = serve(t, 403, `{"success":false}`, nil, nil)
+	c.ModelsURL = ""
+	if e := c.Models(context.Background()); !errors.Is(e, ErrUnauthorized) {
 		t.Fatal(e)
 	}
 }
