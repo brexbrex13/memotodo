@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import App, { Notifications } from "./App";
 import { TaskDetail, DraftHandle } from "./TaskDetail";
@@ -208,5 +209,95 @@ describe("draft conflict resolution", () => {
     expect(() =>
       mergeDraft(base, { ...base, memo: "a" }, { ...base, memo: "b" }),
     ).toThrow("同じ項目");
+  });
+});
+describe("smart add on the main board", () => {
+  const smartBoard = (answer: object) => {
+    snapshot.settings = {
+      ...defaults,
+      smart_add: true,
+    } as Snapshot["settings"];
+    snapshot.categories.push({
+      id: 2,
+      name: "経理",
+      color: "#fff",
+      text_color: "#000",
+      sort_order: 1,
+    });
+    const original = vi.mocked(api).getMockImplementation()!;
+    vi.mocked(api).mockImplementation(async (method, ...args) => {
+      if (method === "GetJevStatus")
+        return { supported: true, configured: true, hint: "", invalid: false };
+      if (method === "SuggestTask")
+        return {
+          category_id: 0,
+          important: false,
+          deadline: "",
+          reminder: "",
+          duplicate: null,
+          invalid: false,
+          ...answer,
+        };
+      return original(method, ...args);
+    });
+  };
+  const calls = (m: string) =>
+    vi.mocked(api).mock.calls.filter((c) => c[0] === m);
+  it("adds into the suggested category while all categories are shown", async () => {
+    smartBoard({ category_id: 2 });
+    render(<App />);
+    const input = await screen.findByLabelText("新しい付箋");
+    fireEvent.change(input, { target: { value: "請求書を経理に" } });
+    const chips = await screen.findByLabelText(
+      "推定した初期値",
+      {},
+      { timeout: 1500 },
+    );
+    expect(within(chips).getByText("経理")).toBeTruthy();
+    expect(calls("SuggestTask")[0].slice(1)).toEqual(["請求書を経理に", true]);
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 13 });
+    await waitFor(() => expect(calls("SaveTask")).toHaveLength(1));
+    expect(calls("SaveTask")[0][1]).toMatchObject({ category_id: 2 });
+  });
+  it("keeps the selected category tab and does not ask for a category", async () => {
+    smartBoard({ category_id: 2, deadline: "today" });
+    render(<App />);
+    const input = await screen.findByLabelText("新しい付箋");
+    fireEvent.click(
+      within(document.querySelector(".filters") as HTMLElement).getByText(
+        "未分類",
+      ),
+    );
+    fireEvent.change(input, { target: { value: "請求書を経理に" } });
+    const chips = await screen.findByLabelText(
+      "推定した初期値",
+      {},
+      { timeout: 1500 },
+    );
+    expect(within(chips).queryByText("経理")).toBeNull();
+    expect(calls("SuggestTask")[0].slice(1)).toEqual(["請求書を経理に", false]);
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 13 });
+    await waitFor(() => expect(calls("SaveTask")).toHaveLength(1));
+    expect(calls("SaveTask")[0][1]).toMatchObject({ category_id: 1 });
+  });
+  it("hides the important chip while filtering by important", async () => {
+    smartBoard({ important: true, deadline: "today" });
+    render(<App />);
+    const input = await screen.findByLabelText("新しい付箋");
+    fireEvent.click(
+      within(document.querySelector(".task-filters") as HTMLElement).getByText(
+        /重要/,
+      ),
+    );
+    fireEvent.change(input, { target: { value: "大事な用事" } });
+    const chips = await screen.findByLabelText(
+      "推定した初期値",
+      {},
+      { timeout: 1500 },
+    );
+    expect(within(chips).queryByText("重要")).toBeNull();
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 13 });
+    await waitFor(() => expect(calls("SaveTask")).toHaveLength(1));
+    expect(calls("SaveTask")[0][1]).toMatchObject({ important: true });
   });
 });

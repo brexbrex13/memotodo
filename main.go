@@ -35,6 +35,7 @@ func main() {
 	}
 	defer store.Close()
 	service := &App{store: store, stop: make(chan struct{}), seen: map[int64]bool{}}
+	service.jevKeys = newKeyStore(dir)
 	frontend, e := fs.Sub(assets, "frontend/dist")
 	if e != nil {
 		panic(e)

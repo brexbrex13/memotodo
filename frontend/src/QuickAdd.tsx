@@ -5,19 +5,15 @@ import { useSuggestions } from "./Suggestions";
 import { ReminderFields } from "./ReminderFields";
 import { Icon } from "./Icons";
 import { useTheme } from "./theme";
+import { blankOptions, JevStatus, QuickOptions, Suggestion } from "./smartAdd";
+import { useSmartAdd } from "./useSmartAdd";
+import { SmartHints } from "./SmartHints";
 export function QuickAdd() {
-  const blank = () => ({
-    deadline: "",
-    reminder_at: "",
-    reminder_mode: "",
-    reminder_time: "",
-    important: false,
-  });
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const [optionsOpen, setOptionsOpen] = useState(false),
-    [options, setOptions] = useState(blank);
+    [options, setOptions] = useState<QuickOptions>(blankOptions);
   const [nativeSuggestions, setNativeSuggestions] = useState(true),
     [showCounter, setShowCounter] = useState(0),
     [generation, setGeneration] = useState(0);
@@ -27,6 +23,7 @@ export function QuickAdd() {
     revision = useRef(0),
     input = useRef<HTMLInputElement>(null),
     addLock = useRef(false);
+  const [jevStatus, setJevStatus] = useState<JevStatus | null>(null);
   useEffect(() => {
     localStorage.removeItem("tray-quick-draft");
     localStorage.removeItem("tray-quick-options");
@@ -38,11 +35,29 @@ export function QuickAdd() {
     snapshot?.settings.suggest_min_count ?? 3,
     setText,
   );
+  const defaultTime = snapshot?.settings.reminder_default_time || "09:00";
+  const smartEnabled =
+    !!snapshot?.settings.smart_add && !!jevStatus?.configured;
+  const smart = useSmartAdd({
+    text,
+    options,
+    setOptions,
+    enabled: smartEnabled,
+    defaultTime,
+    categories: snapshot?.categories ?? [],
+    ask: (title) =>
+      api<Suggestion>("SuggestQuickAdd", title, generationRef.current),
+    session: () => `${operation.current}:${generationRef.current}`,
+  });
+  const rows =
+    (smart.chips.length ? 1 : 0) +
+    (smart.duplicate ? 1 : 0) +
+    (smart.invalid ? 1 : 0);
   useEffect(() => {
-    void api("SetQuickAddLayout", false, optionsOpen, generation).catch((e) =>
-      setError(String(e)),
+    void api("SetQuickAddLayout", false, optionsOpen, rows, generation).catch(
+      (e) => setError(String(e)),
     );
-  }, [optionsOpen, generation]);
+  }, [optionsOpen, generation, rows]);
   useEffect(() => {
     const r = anchor.current?.getBoundingClientRect();
     if (!r) return;
@@ -71,7 +86,8 @@ export function QuickAdd() {
   const discard = () => {
     operation.current++;
     setText("");
-    setOptions(blank());
+    setOptions(blankOptions());
+    smart.reset();
     setOptionsOpen(false);
     setError("");
     suggest.blur();
@@ -81,13 +97,18 @@ export function QuickAdd() {
     void api("HideQuickAdd").catch((e) => setError(String(e)));
   };
   useEffect(() => {
-    const reload = () =>
+    const reload = () => {
       void api<Snapshot>("GetSnapshot")
         .then(setSnapshot)
         .catch((e) => setError(String(e)));
+      void api<JevStatus>("GetJevStatus", "")
+        .then((s) => setJevStatus(s ?? null))
+        .catch(() => setJevStatus(null));
+    };
     const focus = (value?: unknown) => {
       if (typeof value === "number") {
         if (value < generationRef.current) return;
+        if (value !== generationRef.current) smart.setInvalid(false);
         generationRef.current = value;
         setGeneration(value);
       }
@@ -99,6 +120,7 @@ export function QuickAdd() {
     const off = [
       on("board:mini-focus", focus),
       on("board:changed", reload),
+      on("board:jev", reload),
       on("board:mini-reset", (value) => {
         if (typeof value === "number") {
           if (value < generationRef.current) return;
@@ -136,16 +158,22 @@ export function QuickAdd() {
     const token = operation.current;
     setBusy(true);
     setError("");
+    // A suggested category may have been deleted since; fall back to the default.
+    const category_id = snapshot?.categories?.some(
+      (c) => c.id === options.category_id,
+    )
+      ? options.category_id
+      : 0;
     try {
-      await api("SaveTask", { ...emptyTask(), title: text, ...options });
-      if (token !== operation.current) return;
-      setOptions({
-        deadline: "",
-        reminder_at: "",
-        reminder_mode: "",
-        reminder_time: "",
-        important: false,
+      await api("SaveTask", {
+        ...emptyTask(),
+        title: text,
+        ...options,
+        category_id,
       });
+      if (token !== operation.current) return;
+      setOptions(blankOptions());
+      smart.reset();
       setOptionsOpen(false);
       setText("");
       suggest.reset();
@@ -187,9 +215,15 @@ export function QuickAdd() {
           placeholder="入力してEnterで追加"
           value={text}
           readOnly={busy}
-          onCompositionStart={suggest.compositionStart}
+          onCompositionStart={() => {
+            smart.compositionStart();
+            suggest.compositionStart();
+          }}
           onCompositionUpdate={suggest.compositionUpdate}
-          onCompositionEnd={suggest.compositionEnd}
+          onCompositionEnd={() => {
+            suggest.compositionEnd();
+            smart.compositionEnd();
+          }}
           onKeyUp={suggest.keyUp}
           onFocus={suggest.focus}
           onBlur={suggest.blur}
@@ -221,22 +255,36 @@ export function QuickAdd() {
         </button>
       </div>
       {!nativeSuggestions && suggest.list}
+      <SmartHints
+        smart={smart}
+        onOpen={(id) =>
+          void api("OpenTask", id).catch((e) => setError(String(e)))
+        }
+      />
       {optionsOpen && (
         <div className="mini-options">
           <ReminderFields
             value={options}
             defaultTime={snapshot?.settings.reminder_default_time}
-            onChange={(p) =>
-              setOptions((v: typeof options) => ({ ...v, ...p }))
-            }
+            onChange={(p) => {
+              if ("deadline" in p) smart.touch("deadline");
+              if (
+                "reminder_at" in p ||
+                "reminder_mode" in p ||
+                "reminder_time" in p
+              )
+                smart.touch("reminder");
+              setOptions((v) => ({ ...v, ...p }));
+            }}
           />
           <label className="check">
             <input
               type="checkbox"
               checked={options.important}
-              onChange={(e) =>
-                setOptions({ ...options, important: e.target.checked })
-              }
+              onChange={(e) => {
+                smart.touch("important");
+                setOptions({ ...options, important: e.target.checked });
+              }}
             />
             重要
           </label>
@@ -247,13 +295,8 @@ export function QuickAdd() {
               aria-label="入力中の内容を削除"
               onClick={() => {
                 setText("");
-                setOptions({
-                  deadline: "",
-                  reminder_at: "",
-                  reminder_mode: "",
-                  reminder_time: "",
-                  important: false,
-                });
+                setOptions(blankOptions());
+                smart.reset();
                 setError("");
                 suggest.reset();
                 input.current?.focus();

@@ -86,6 +86,11 @@ export type Settings = {
   compact: boolean;
   collapsed: number[];
   monitor: string;
+  smart_add?: boolean;
+  jev_provider?: string;
+  jev_cloudflare_account?: string;
+  jev_custom_url?: string;
+  jev_custom_model?: string;
 };
 export type Snapshot = {
   tasks: Task[];

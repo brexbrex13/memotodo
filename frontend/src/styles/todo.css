@@ -1708,3 +1708,14 @@ button {
 
 /* Main-board suggestions take their own space; they never cover task rows. */
 .quick > .task-suggestions { position: static; margin-top: 4px; max-height: 120px; overflow-y: auto; box-shadow: none; }
+
+/* Smart add: chips and notices sit under the input; the window grows by one row each. */
+.smart-chips { display: flex; gap: 4px; margin-top: 5px; overflow: hidden; }
+.smart-chip { display: inline-flex; align-items: center; gap: 2px; padding: 1px 2px 1px 7px; border: 1px solid var(--border); border-radius: 10px; font-size: 11px; white-space: nowrap; }
+.smart-chip button { border: 0; background: transparent; padding: 0 4px; font-size: 11px; line-height: 1; }
+.smart-duplicate { display: block; width: 100%; margin-top: 4px; padding: 2px 4px; border: 0; background: transparent; color: var(--text); text-align: left; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.smart-duplicate:hover { background: var(--hover); }
+.mini-add .smart-chips, .mini-add .smart-duplicate { --wails-draggable: no-drag; }
+.jev-key { display: grid; gap: 6px; }
+.jev-key label { display: grid; gap: 4px; }
+.jev-note { font-size: 12px; color: var(--muted); margin: 0; }
