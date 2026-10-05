@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  MouseEvent as ReactMouseEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   DndContext,
   PointerSensor,
@@ -35,6 +41,7 @@ import { SeriesForm } from "./SeriesForm";
 import { SettingsForm } from "./SettingsForm";
 import { CategoryManager } from "./CategoryManager";
 import { CategoryTabs } from "./CategoryTabs";
+import { ContextMenu } from "./ContextMenu";
 import { NotificationPause } from "./NotificationPause";
 import { ReminderFields } from "./ReminderFields";
 import { useSuggestions } from "./Suggestions";
@@ -85,6 +92,7 @@ function Row({
   toggleImportant,
   toggleToday,
   drag,
+  onContextMenu,
 }: {
   t: Task;
   u: string;
@@ -94,11 +102,13 @@ function Row({
   toggleImportant: () => void;
   toggleToday: () => void;
   drag: boolean;
+  onContextMenu: (event: ReactMouseEvent) => void;
 }) {
   const s = useSortable({ id: t.id, disabled: !drag });
   return (
     <article
       ref={s.setNodeRef}
+      onContextMenu={onContextMenu}
       style={{
         transform: CSS.Transform.toString(s.transform),
         transition: s.transition,
@@ -193,17 +203,20 @@ function Group({
   toggle,
   count,
   children,
+  onContextMenu,
 }: {
   c: Category;
   collapsed: boolean;
   toggle: () => void;
   count: number;
   children: React.ReactNode;
+  onContextMenu: (event: ReactMouseEvent) => void;
 }) {
   const drop = useDroppable({ id: "category:" + c.id });
   return (
     <section
       ref={drop.setNodeRef}
+      onContextMenu={onContextMenu}
       className={"category" + (drop.isOver ? " drop-over" : "")}
       style={{ background: c.color, color: c.text_color || "#302d25" }}
       aria-label={c.name}
@@ -247,6 +260,25 @@ export default function App() {
   const [categoryFocus, setCategoryFocus] = useState<number | undefined>(
     undefined,
   );
+  const [context, setContext] = useState<{
+    x: number;
+    y: number;
+    categoryId?: number;
+    task?: Task;
+  } | null>(null);
+  const showContext = (
+    event: ReactMouseEvent,
+    target: { categoryId?: number; task?: Task },
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setContext({ x: event.clientX, y: event.clientY, ...target });
+  };
+  const manageCategory = (id: number) =>
+    void navigate(() => {
+      setCategoryFocus(id);
+      setPanel("categories");
+    });
   const [bulkBusy, setBulkBusy] = useState(false);
   const [temporaryCollapsed, setTemporaryCollapsed] = useState<
     Record<number, boolean>
@@ -1076,12 +1108,8 @@ export default function App() {
             selected={category}
             all={view === "board" && category < 0}
             onSelect={(id) => setTab("board", id)}
-            onManage={(id) =>
-              void navigate(() => {
-                setCategoryFocus(id);
-                setPanel("categories");
-              })
-            }
+            onManage={manageCategory}
+            onContextMenu={(id, e) => showContext(e, { categoryId: id })}
           />
           <div className="task-filters" aria-label="タスクの絞り込み">
             <button
@@ -1221,6 +1249,7 @@ export default function App() {
               return (
                 <Group
                   c={c}
+                  onContextMenu={(e) => showContext(e, { categoryId: c.id })}
                   collapsed={
                     selected?.category_id === c.id
                       ? false
@@ -1254,6 +1283,7 @@ export default function App() {
                       <Row
                         key={t.id}
                         t={t}
+                        onContextMenu={(e) => showContext(e, { task: t })}
                         u={urgency(t, data.settings)}
                         drag={drag}
                         open={() => void open(t)}
@@ -1459,6 +1489,53 @@ export default function App() {
           onClose={() => setSeries(null)}
           onSaved={() => void reload()}
           onError={report}
+        />
+      )}
+      {context && (
+        <ContextMenu
+          key={`${context.x}:${context.y}:${context.task?.id ?? context.categoryId}`}
+          x={context.x}
+          y={context.y}
+          label={context.task ? "タスクの操作" : "カテゴリの操作"}
+          onClose={() => setContext(null)}
+          items={
+            context.task
+              ? [
+                  {
+                    label: "詳細を開く",
+                    action: () => void open(context.task!),
+                  },
+                  ...(context.task.deleted_at
+                    ? [
+                        {
+                          label: "ごみ箱から戻す",
+                          action: () => void state(context.task!, "restore"),
+                        },
+                      ]
+                    : [
+                        context.task.status === "pending"
+                          ? {
+                              label: "完了にする",
+                              action: () => void state(context.task!, "done"),
+                            }
+                          : {
+                              label: "未完了に戻す",
+                              action: () =>
+                                void state(context.task!, "pending"),
+                            },
+                        {
+                          label: "ごみ箱へ送る",
+                          action: () => void state(context.task!, "trash"),
+                        },
+                      ]),
+                ]
+              : [
+                  {
+                    label: "カテゴリ編集",
+                    action: () => manageCategory(context.categoryId!),
+                  },
+                ]
+          }
         />
       )}
       <UndoToast onError={report} />

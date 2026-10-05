@@ -47,7 +47,9 @@ test("category tabs wrap at minimum width and right click focuses the selected c
     .locator(".category-tabs")
     .getByRole("button", { name: "確認用カテゴリ8", exact: true })
     .click({ button: "right" });
-  await page.getByRole("menuitem", { name: "編集", exact: true }).click();
+  await page
+    .getByRole("menuitem", { name: "カテゴリ編集", exact: true })
+    .click();
   await expect(page.getByLabel("確認用カテゴリ8の名前")).toBeFocused();
   await page.getByLabel("カテゴリ管理を閉じる").click();
   await page.screenshot({ path: "/tmp/memotodo-review-narrow.png" });
@@ -163,6 +165,7 @@ test("AI failure stops requests, ordinary registration works and connection chec
       jev_custom_model: "review-local",
       ai_timeout_seconds: 2,
     });
+    await page.reload();
     const input = page.getByLabel("新しい付箋");
     await input.fill("接続失敗を確認する入力");
     await expect(page.locator(".smart-hints")).toContainText(
@@ -193,4 +196,103 @@ test("AI failure stops requests, ordinary registration works and connection chec
     server.closeAllConnections();
     await new Promise<void>((r) => server.close(() => r()));
   }
+});
+
+test("list context menus edit categories and follow task state without opening the category menu", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const category = await service(page, "SaveCategory", {
+    id: 0,
+    name: "右クリック確認",
+    color: "#fffdf8",
+    text_color: "#302d25",
+    sort_order: 0,
+    dormant: false,
+  });
+  const task = await service(page, "SaveTask", {
+    id: 0,
+    version: 0,
+    title: "右クリック用タスク",
+    status: "pending",
+    memo: "",
+    deadline: "",
+    reminder_at: "",
+    category_id: category.id,
+    important: false,
+  });
+  await page.reload();
+  const group = page.getByRole("region", {
+    name: "右クリック確認",
+    exact: true,
+  });
+  await group.locator(".category-caption").click({ button: "right" });
+  await page
+    .getByRole("menuitem", { name: "カテゴリ編集", exact: true })
+    .click();
+  await expect(page.getByLabel("右クリック確認の名前")).toBeFocused();
+  await page.getByLabel("カテゴリ管理を閉じる").click();
+  const row = page
+    .locator(".task-row")
+    .filter({ hasText: "右クリック用タスク" });
+  await row.click({ button: "right" });
+  await expect(
+    page.getByRole("menuitem", { name: "カテゴリ編集", exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("menuitem", { name: "詳細を開く", exact: true }).click();
+  await expect(
+    page.getByRole("complementary", { name: "タスクの詳細" }),
+  ).toBeVisible();
+  await page.getByLabel("詳細の外側を閉じる").click();
+  await row.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "完了にする", exact: true }).click();
+  await page.getByRole("button", { name: "完了済み", exact: true }).click();
+  await expect(row).toBeVisible();
+  await row.click({ button: "right" });
+  await expect(
+    page.getByRole("menuitem", { name: "未完了に戻す", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("menuitem", { name: "ごみ箱へ送る", exact: true })
+    .click();
+  await expect
+    .poll(
+      async () =>
+        (await service(page, "GetSnapshot")).tasks.find(
+          (t: any) => t.id === task.id,
+        ).deleted_at,
+    )
+    .not.toBe("");
+  await page.getByRole("button", { name: "メニュー", exact: true }).click();
+  await page.getByRole("button", { name: "ごみ箱", exact: true }).click();
+  await row.click({ button: "right" });
+  await expect(
+    page.getByRole("menuitem", { name: "完了にする", exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("menuitem", { name: "ごみ箱から戻す", exact: true })
+    .click();
+  await expect
+    .poll(
+      async () =>
+        (await service(page, "GetSnapshot")).tasks.find(
+          (t: any) => t.id === task.id,
+        ).deleted_at,
+    )
+    .toBe("");
+  await page.getByRole("button", { name: "完了済み", exact: true }).click();
+  await row.click({ button: "right" });
+  await page
+    .getByRole("menuitem", { name: "未完了に戻す", exact: true })
+    .click();
+  await page.getByRole("button", { name: "一覧に戻る", exact: true }).click();
+  await expect(row).toBeVisible();
+  await page.setViewportSize({ width: 360, height: 760 });
+  await row.click({ button: "right", position: { x: 280, y: 20 } });
+  const menu = page.getByRole("menu", { name: "タスクの操作" });
+  const box = await menu.boundingBox();
+  expect(box!.x + box!.width).toBeLessThanOrEqual(360);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(760);
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
 });
