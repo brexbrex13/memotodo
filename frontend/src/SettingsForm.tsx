@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { api } from "./api";
 import { ShortcutField } from "./ShortcutField";
+import { JevKeyField } from "./JevKeyField";
 import { Settings } from "./types";
+import { jevProvider, jevProviders } from "./smartAdd";
 export function SettingsForm({
   initial,
   onClose,
@@ -162,6 +164,70 @@ export function SettingsForm({
               value={v.quick_shortcut ?? "Ctrl+Alt+N"}
               onChange={(quick_shortcut) => patch({ quick_shortcut })}
             />
+            <h3 className="wide">スマート追加（Jev）</h3>
+            <label className="check wide">
+              <input
+                type="checkbox"
+                checked={!!v.smart_add}
+                onChange={(e) => patch({ smart_add: e.target.checked })}
+              />
+              タスク追加時にカテゴリ・重要・期限・通知を推定し、似たタスクを知らせる
+            </label>
+            <label>
+              プロバイダー
+              <select
+                aria-label="Jevのプロバイダー"
+                value={jevProvider(v.jev_provider ?? "").id}
+                onChange={(e) => patch({ jev_provider: e.target.value })}
+              >
+                {jevProviders.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {v.jev_provider === "cloudflare" && (
+              <label>
+                CloudflareのアカウントID
+                <input
+                  value={v.jev_cloudflare_account ?? ""}
+                  placeholder="英数字32桁"
+                  onChange={(e) =>
+                    patch({ jev_cloudflare_account: e.target.value })
+                  }
+                />
+              </label>
+            )}
+            {v.jev_provider === "custom" && (
+              <>
+                <label>
+                  ベースURL
+                  <input
+                    value={v.jev_custom_url ?? ""}
+                    placeholder="https://…（/v1/systemone の手前まで）"
+                    onChange={(e) => patch({ jev_custom_url: e.target.value })}
+                  />
+                </label>
+                <label>
+                  モデル名
+                  <input
+                    value={v.jev_custom_model ?? ""}
+                    onChange={(e) =>
+                      patch({ jev_custom_model: e.target.value })
+                    }
+                  />
+                </label>
+              </>
+            )}
+            <JevKeyField
+              endpoint={{
+                provider: jevProvider(v.jev_provider ?? "").id,
+                account: (v.jev_cloudflare_account ?? "").trim(),
+                base_url: (v.jev_custom_url ?? "").trim(),
+                model: (v.jev_custom_model ?? "").trim(),
+              }}
+            />
             <h3 className="wide">表示</h3>
             <label>
               文字サイズ
@@ -256,6 +322,11 @@ export function SettingsForm({
               try {
                 await api("SaveSettings", {
                   ...v,
+                  jev_cloudflare_account: (
+                    v.jev_cloudflare_account ?? ""
+                  ).trim(),
+                  jev_custom_url: (v.jev_custom_url ?? "").trim(),
+                  jev_custom_model: (v.jev_custom_model ?? "").trim(),
                   notify_times: times
                     .split(",")
                     .map((x) => x.trim())

@@ -37,6 +37,9 @@ import { CategoryManager } from "./CategoryManager";
 import { NotificationPause } from "./NotificationPause";
 import { ReminderFields } from "./ReminderFields";
 import { useSuggestions } from "./Suggestions";
+import { blankOptions, JevStatus, Suggestion } from "./smartAdd";
+import { useSmartAdd } from "./useSmartAdd";
+import { SmartHints } from "./SmartHints";
 import { UndoToast } from "./UndoToast";
 import { date } from "./types";
 import { Icon } from "./Icons";
@@ -230,13 +233,8 @@ export default function App() {
     [quick, setQuick] = useState(localStorage.getItem("quick-draft") ?? ""),
     [adding, setAdding] = useState(false),
     [quickOptionsOpen, setQuickOptionsOpen] = useState(false),
-    [quickOptions, setQuickOptions] = useState({
-      deadline: "",
-      reminder_at: "",
-      reminder_mode: "",
-      reminder_time: "",
-      important: false,
-    }),
+    [quickOptions, setQuickOptions] = useState(blankOptions),
+    [jevStatus, setJevStatus] = useState<JevStatus | null>(null),
     [selected, setSelected] = useState<Task | null>(null),
     [series, setSeries] = useState<Series | null>(null),
     [togglingSeries, setTogglingSeries] = useState<number | null>(null),
@@ -279,6 +277,33 @@ export default function App() {
     setQuick,
     category,
   );
+  // On "all categories" Jev may also pick the category; a selected tab always wins.
+  const smart = useSmartAdd({
+    text: quick,
+    options: quickOptions,
+    setOptions: setQuickOptions,
+    enabled:
+      !!data?.settings.smart_add &&
+      !!jevStatus?.configured &&
+      view === "board" &&
+      !recurringOnly,
+    defaultTime: data?.settings.reminder_default_time || "09:00",
+    categories: data?.categories ?? [],
+    ask: (title) => api<Suggestion>("SuggestTask", title, category <= 0),
+    scope: category > 0 ? "tab" : "all",
+    hide: [
+      ...(category > 0 ? (["category"] as const) : []),
+      ...(important ? (["important"] as const) : []),
+    ],
+  });
+  useEffect(() => {
+    const load = () =>
+      void api<JevStatus>("GetJevStatus", "")
+        .then((s) => setJevStatus(s ?? null))
+        .catch(() => setJevStatus(null));
+    load();
+    return on("board:jev", load);
+  }, []);
   const report = useCallback(
     (e: unknown) => setError(e instanceof Error ? e.message : String(e)),
     [],
@@ -320,13 +345,8 @@ export default function App() {
   const resetOperation = () => {
     setQuick("");
     localStorage.removeItem("quick-draft");
-    setQuickOptions({
-      deadline: "",
-      reminder_at: "",
-      reminder_mode: "",
-      reminder_time: "",
-      important: false,
-    });
+    setQuickOptions(blankOptions());
+    smart.reset();
     setQuickOptionsOpen(false);
     suggest.blur();
     setView("board");
@@ -495,22 +515,24 @@ export default function App() {
       return;
     addLock.current = true;
     setAdding(true);
+    const target =
+      category > 0
+        ? category
+        : categories.some((c) => c.id === quickOptions.category_id)
+          ? quickOptions.category_id
+          : categories[0]?.id || 0;
     try {
       await api("SaveTask", {
-        ...emptyTask(category > 0 ? category : categories[0]?.id || 0),
+        ...emptyTask(target),
         title: quick,
         ...quickOptions,
+        category_id: target,
         important: important || quickOptions.important,
         today_date: todayOnly ? date() : "",
       });
       setQuick("");
-      setQuickOptions({
-        deadline: "",
-        reminder_at: "",
-        reminder_mode: "",
-        reminder_time: "",
-        important: false,
-      });
+      setQuickOptions(blankOptions());
+      smart.reset();
       suggest.blur();
       setQuickOptionsOpen(false);
       await reload();
@@ -880,9 +902,15 @@ export default function App() {
                 value={quick}
                 readOnly={adding || !inputAvailable}
                 aria-disabled={!inputAvailable}
-                onCompositionStart={suggest.compositionStart}
+                onCompositionStart={() => {
+                  smart.compositionStart();
+                  suggest.compositionStart();
+                }}
                 onCompositionUpdate={suggest.compositionUpdate}
-                onCompositionEnd={suggest.compositionEnd}
+                onCompositionEnd={() => {
+                  suggest.compositionEnd();
+                  smart.compositionEnd();
+                }}
                 onKeyUp={(e) => {
                   suggest.keyUp();
                   if (e.key === "Tab" && inputAvailable && !quick.trim())
@@ -924,16 +952,23 @@ export default function App() {
               >
                 <Clock />
               </button>
-              {(quickOptions.deadline ||
-                quickOptions.reminder_at ||
-                quickOptions.important) && (
-                <small className="quick-options-summary">
-                  {quickOptions.deadline && "期限 " + quickOptions.deadline}
-                  {(quickOptions.reminder_at ||
-                    quickOptions.reminder_mode === "deadline") &&
-                    " · 通知あり"}
-                  {quickOptions.important && " · ★"}
-                </small>
+              {smart.chips.length === 0 &&
+                (quickOptions.deadline ||
+                  quickOptions.reminder_at ||
+                  quickOptions.important) && (
+                  <small className="quick-options-summary">
+                    {quickOptions.deadline && "期限 " + quickOptions.deadline}
+                    {(quickOptions.reminder_at ||
+                      quickOptions.reminder_mode === "deadline") &&
+                      " · 通知あり"}
+                    {quickOptions.important && " · ★"}
+                  </small>
+                )}
+              {inputAvailable && (
+                <SmartHints
+                  smart={smart}
+                  onOpen={(id) => void api("OpenTask", id).catch(report)}
+                />
               )}
               {inputAvailable && quickOptionsOpen && (
                 <div
@@ -943,7 +978,16 @@ export default function App() {
                   <ReminderFields
                     value={quickOptions}
                     defaultTime={data.settings.reminder_default_time}
-                    onChange={(p) => setQuickOptions((v) => ({ ...v, ...p }))}
+                    onChange={(p) => {
+                      if ("deadline" in p) smart.touch("deadline");
+                      if (
+                        "reminder_at" in p ||
+                        "reminder_mode" in p ||
+                        "reminder_time" in p
+                      )
+                        smart.touch("reminder");
+                      setQuickOptions((v) => ({ ...v, ...p }));
+                    }}
                   />
                   <label className="check">
                     <input
@@ -955,12 +999,13 @@ export default function App() {
                           ? "重要で絞り込み中は、重要タスクとして追加します"
                           : undefined
                       }
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        smart.touch("important");
                         setQuickOptions({
                           ...quickOptions,
                           important: e.target.checked,
-                        })
-                      }
+                        });
+                      }}
                     />
                     重要
                   </label>
