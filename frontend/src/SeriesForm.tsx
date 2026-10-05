@@ -248,6 +248,16 @@ export function SeriesForm({
           </fieldset>
           <details>
             <summary>メモ</summary>
+            <label className="check notice-memo-option">
+              <input
+                type="checkbox"
+                checked={!!v.show_memo_in_notice}
+                onChange={(e) =>
+                  patch({ show_memo_in_notice: e.target.checked })
+                }
+              />
+              通知にメモを表示する
+            </label>
             <Editor
               value={v.memo}
               onChange={(memo) => patch({ memo })}

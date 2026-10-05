@@ -235,7 +235,7 @@ func syncSeries(q queryer, now time.Time) (bool, error) {
 			if v.DueTime != "" {
 				deadline += "T" + v.DueTime + ":00"
 			}
-			t := Task{Version: 1, Title: v.Title, Memo: v.Memo, Status: "pending", Deadline: deadline, CategoryID: v.CategoryID, Important: v.Important, SortOrder: now.UnixNano() + int64(count), CreatedAt: ISO(now), SeriesID: v.ID, Occurrence: due, NearDays: v.NearDays}
+			t := Task{Version: 1, Title: v.Title, Memo: v.Memo, ShowMemoInNotice: v.ShowMemoInNotice, Status: "pending", Deadline: deadline, CategoryID: v.CategoryID, Important: v.Important, SortOrder: now.UnixNano() + int64(count), CreatedAt: ISO(now), SeriesID: v.ID, Occurrence: due, NearDays: v.NearDays}
 			switch v.NotifyMode {
 			case "days":
 				h, _ := time.Parse("15:04", v.NotifyTime)

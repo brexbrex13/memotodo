@@ -3,6 +3,7 @@ export type Task = {
   version: number;
   title: string;
   memo: string;
+  show_memo_in_notice?: boolean;
   status: string;
   deadline: string;
   reminder_at: string;
@@ -33,6 +34,7 @@ export type Series = {
   version: number;
   title: string;
   memo: string;
+  show_memo_in_notice?: boolean;
   category_id: number;
   important: boolean;
   period: string;
@@ -108,6 +110,7 @@ export const emptyTask = (category_id = 0): Task => ({
   version: 0,
   title: "",
   memo: "",
+  show_memo_in_notice: false,
   status: "pending",
   deadline: "",
   reminder_at: "",
@@ -127,6 +130,7 @@ export const emptySeries = (): Series => ({
   version: 0,
   title: "",
   memo: "",
+  show_memo_in_notice: false,
   category_id: 0,
   important: false,
   period: "weekly",

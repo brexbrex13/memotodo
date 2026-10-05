@@ -7,15 +7,10 @@ import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
-import DOMPurify from "dompurify";
 import { Icon } from "./Icons";
 import { memoLink } from "./links";
 import { api } from "./api";
-const sanitizeMemo = (html: string) =>
-  DOMPurify.sanitize(html, {
-    ALLOWED_URI_REGEXP:
-      /^(?:(?:https?|file):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
-  });
+import { sanitizeMemo } from "./memo";
 export function Editor({
   value,
   onChange,

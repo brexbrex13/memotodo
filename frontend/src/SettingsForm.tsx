@@ -250,8 +250,11 @@ export function SettingsForm({
                 checked={!!v.smart_add}
                 onChange={(e) => patch({ smart_add: e.target.checked })}
               />
-              タスク追加時にカテゴリ・重要・期限・通知を推定し、似たタスクを知らせる
+              AIでタスク入力を補助する
             </label>
+            <p className="muted wide ai-description">
+              入力した内容からカテゴリ・重要度・期限・通知を提案し、似た既存タスクがあれば表示します。
+            </p>
             <label>
               プロバイダー
               <select

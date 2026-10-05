@@ -6,26 +6,27 @@ import (
 )
 
 type Task struct {
-	ID           int64  `json:"id"`
-	Version      int    `json:"version"`
-	Title        string `json:"title"`
-	Memo         string `json:"memo"`
-	Status       string `json:"status"`
-	Deadline     string `json:"deadline"`
-	ReminderAt   string `json:"reminder_at"`
-	ReminderMode string `json:"reminder_mode"`
-	ReminderTime string `json:"reminder_time"`
-	TodayDate    string `json:"today_date"`
-	NotifiedAt   string `json:"notified_at"`
-	CategoryID   int64  `json:"category_id"`
-	Important    bool   `json:"important"`
-	SortOrder    int64  `json:"sort_order"`
-	CreatedAt    string `json:"created_at"`
-	DoneAt       string `json:"done_at"`
-	DeletedAt    string `json:"deleted_at"`
-	SeriesID     int64  `json:"series_id"`
-	Occurrence   string `json:"occurrence"`
-	NearDays     int    `json:"near_days"`
+	ID               int64  `json:"id"`
+	Version          int    `json:"version"`
+	Title            string `json:"title"`
+	Memo             string `json:"memo"`
+	ShowMemoInNotice bool   `json:"show_memo_in_notice"`
+	Status           string `json:"status"`
+	Deadline         string `json:"deadline"`
+	ReminderAt       string `json:"reminder_at"`
+	ReminderMode     string `json:"reminder_mode"`
+	ReminderTime     string `json:"reminder_time"`
+	TodayDate        string `json:"today_date"`
+	NotifiedAt       string `json:"notified_at"`
+	CategoryID       int64  `json:"category_id"`
+	Important        bool   `json:"important"`
+	SortOrder        int64  `json:"sort_order"`
+	CreatedAt        string `json:"created_at"`
+	DoneAt           string `json:"done_at"`
+	DeletedAt        string `json:"deleted_at"`
+	SeriesID         int64  `json:"series_id"`
+	Occurrence       string `json:"occurrence"`
+	NearDays         int    `json:"near_days"`
 }
 type Category struct {
 	ID        int64  `json:"id"`
@@ -41,29 +42,30 @@ type ColorPreset struct {
 	Foreground string `json:"foreground"`
 }
 type Series struct {
-	ID          int64  `json:"id"`
-	Version     int    `json:"version"`
-	Title       string `json:"title"`
-	Memo        string `json:"memo"`
-	CategoryID  int64  `json:"category_id"`
-	Important   bool   `json:"important"`
-	Period      string `json:"period"`
-	Interval    int    `json:"interval"`
-	Weekdays    []int  `json:"weekdays"`
-	MonthDay    int    `json:"month_day"` // 0=month end
-	Month       int    `json:"month"`
-	FirstDue    string `json:"first_due"`
-	NextDue     string `json:"next_due"`
-	DueTime     string `json:"due_time"`
-	ShowDays    int    `json:"show_days"`
-	NearDays    int    `json:"near_days"`
-	NotifyMode  string `json:"notify_mode"` // off, days, hours
-	NotifyDays  int    `json:"notify_days"`
-	NotifyTime  string `json:"notify_time"`
-	NotifyHours int    `json:"notify_hours"`
-	Active      bool   `json:"active"`
-	Deleted     bool   `json:"deleted"`
-	EndDate     string `json:"end_date"`
+	ID               int64  `json:"id"`
+	Version          int    `json:"version"`
+	Title            string `json:"title"`
+	Memo             string `json:"memo"`
+	ShowMemoInNotice bool   `json:"show_memo_in_notice"`
+	CategoryID       int64  `json:"category_id"`
+	Important        bool   `json:"important"`
+	Period           string `json:"period"`
+	Interval         int    `json:"interval"`
+	Weekdays         []int  `json:"weekdays"`
+	MonthDay         int    `json:"month_day"` // 0=month end
+	Month            int    `json:"month"`
+	FirstDue         string `json:"first_due"`
+	NextDue          string `json:"next_due"`
+	DueTime          string `json:"due_time"`
+	ShowDays         int    `json:"show_days"`
+	NearDays         int    `json:"near_days"`
+	NotifyMode       string `json:"notify_mode"` // off, days, hours
+	NotifyDays       int    `json:"notify_days"`
+	NotifyTime       string `json:"notify_time"`
+	NotifyHours      int    `json:"notify_hours"`
+	Active           bool   `json:"active"`
+	Deleted          bool   `json:"deleted"`
+	EndDate          string `json:"end_date"`
 }
 type Notification struct {
 	ID           int64  `json:"id"`

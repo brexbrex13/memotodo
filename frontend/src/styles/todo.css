@@ -1737,3 +1737,20 @@ button {
 .section-actions .bulk-action:hover:not(:disabled) { color: var(--danger); border-color: var(--danger); }
 .smart-chips { flex-wrap: wrap; overflow: visible; }
 .smart-invalid { font-size: 11px; margin: 4px 0 0; }
+
+.ai-description { margin: -4px 0 4px; font-size: 12px; line-height: 1.6; }
+.notice-memo-option { margin: 6px 0 8px; font-size: 12px; }
+.notice-body { flex: 1; min-height: 0; overflow: auto; }
+.notice-body .notice-content { width: 100%; overflow: visible; }
+.notice-memo { padding: 8px 12px; border-top: 1px solid var(--border); line-height: 1.6; overflow-wrap: anywhere; user-select: text; }
+.notice-memo p { margin: 0 0 6px; white-space: pre-wrap; }
+.notice-memo pre { white-space: pre-wrap; }
+.notice-memo img { display: block; max-width: 100%; height: auto; max-height: 180px; object-fit: contain; cursor: zoom-in; }
+.notice-memo a { color: var(--link, #185caa); text-decoration: underline; cursor: pointer; }
+.notice-memo ul, .notice-memo ol { padding-left: 22px; }
+.summary-item { flex-wrap: wrap; }
+.summary-item .notice-memo { flex-basis: 100%; min-width: 0; padding: 6px 0 0; }
+.summary-item > .summary-complete { flex-shrink: 0; font-size: 11px; }
+.notice-lightbox { background: #000d; }
+
+[data-theme="dark"] .notice-memo a { color: #9bc5ff; }

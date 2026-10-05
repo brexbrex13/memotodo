@@ -42,6 +42,7 @@ import { SettingsForm } from "./SettingsForm";
 import { CategoryManager } from "./CategoryManager";
 import { CategoryTabs } from "./CategoryTabs";
 import { ContextMenu } from "./ContextMenu";
+import { MemoPreview } from "./MemoPreview";
 import { NotificationPause } from "./NotificationPause";
 import { ReminderFields } from "./ReminderFields";
 import { useSuggestions } from "./Suggestions";
@@ -1626,9 +1627,18 @@ export function Notifications() {
                       {t.deadline} · {urgencyLabel[urgency(t, data.settings)]}
                     </small>
                   </button>
-                  <button onClick={() => call("SetState", t.id, "done")}>
+                  <button
+                    className="summary-complete"
+                    onClick={() => call("SetState", t.id, "done")}
+                  >
                     完了
                   </button>
+                  {t.show_memo_in_notice && t.memo && (
+                    <MemoPreview
+                      value={t.memo}
+                      onError={(e) => setError(String(e))}
+                    />
+                  )}
                 </div>
               ))
             ) : (
@@ -1647,20 +1657,30 @@ export function Notifications() {
         </>
       ) : (
         <>
-          <button
-            className="notice-content"
-            data-tip="タスクを開いて、この通知を閉じる"
-            onClick={open}
-          >
-            <h2>
-              {data.settings.private
-                ? "タスクの通知"
-                : (task?.title ?? n.title)}
-            </h2>
-            {!data.settings.private && task?.deadline && (
-              <small>期限 {task.deadline}</small>
-            )}
-          </button>
+          <div className="notice-body">
+            <button
+              className="notice-content"
+              data-tip="タスクを開いて、この通知を閉じる"
+              onClick={open}
+            >
+              <h2>
+                {data.settings.private
+                  ? "タスクの通知"
+                  : (task?.title ?? n.title)}
+              </h2>
+              {!data.settings.private && task?.deadline && (
+                <small>期限 {task.deadline}</small>
+              )}
+            </button>
+            {!data.settings.private &&
+              task?.show_memo_in_notice &&
+              task.memo && (
+                <MemoPreview
+                  value={task.memo}
+                  onError={(e) => setError(String(e))}
+                />
+              )}
+          </div>
           <footer>
             {n.task_id > 0 && (
               <>

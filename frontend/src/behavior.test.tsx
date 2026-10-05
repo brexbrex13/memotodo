@@ -89,7 +89,9 @@ describe("sticky board and notification semantics", () => {
     fireEvent.keyDown(input, { key: "Enter", keyCode: 13, isComposing: false });
     await waitFor(() =>
       expect(
-        vi.mocked(api).mock.calls.find((c) => c[0] === "SaveSuggestedTask")?.[1],
+        vi
+          .mocked(api)
+          .mock.calls.find((c) => c[0] === "SaveSuggestedTask")?.[1],
       ).toMatchObject({ title: "ぱぱっと要件", deadline: "", reminder_at: "" }),
     );
   });
@@ -299,5 +301,78 @@ describe("smart add on the main board", () => {
     fireEvent.keyDown(input, { key: "Enter", keyCode: 13 });
     await waitFor(() => expect(calls("SaveSuggestedTask")).toHaveLength(1));
     expect(calls("SaveSuggestedTask")[0][1]).toMatchObject({ important: true });
+  });
+});
+
+describe("notification memo visibility", () => {
+  it.each(["reminder", "summary"])(
+    "shows opted-in memos for %s without acknowledging links, and hides them in private mode",
+    async (kind) => {
+      snapshot.tasks = [
+        {
+          ...emptyTask(1),
+          id: 1,
+          title: "メモ通知",
+          deadline: "2000-01-01",
+          memo: '<p>手順</p><a href="file:///C:/Work">作業場所</a>',
+          show_memo_in_notice: true,
+        },
+      ];
+      snapshot.notifications = [
+        {
+          id: 1,
+          key: "memo",
+          task_id: kind === "summary" ? 0 : 1,
+          kind,
+          title: "通知",
+          fired_at: "2000-01-01T09:00",
+          acknowledged: false,
+        },
+      ];
+      const view = render(<Notifications />);
+      const memo = await screen.findByLabelText("通知のメモ");
+      fireEvent.click(within(memo).getByRole("link", { name: "作業場所" }));
+      await waitFor(() =>
+        expect(api).toHaveBeenCalledWith("OpenURL", "file:///C:/Work"),
+      );
+      expect(api).not.toHaveBeenCalledWith("Acknowledge", 1);
+      expect(api).not.toHaveBeenCalledWith("OpenFromNotice", 1, 1);
+      view.unmount();
+      snapshot.settings = { ...defaults, private: true };
+      render(<Notifications />);
+      await screen.findByLabelText("通知を閉じる");
+      expect(screen.queryByLabelText("通知のメモ")).toBeNull();
+    },
+  );
+  it("defaults off and saves the per-task option with the memo", async () => {
+    const task = { ...emptyTask(1), id: 11, version: 1, title: "設定の保存" };
+    render(
+      <TaskDetail
+        task={task}
+        categories={[]}
+        onClose={vi.fn()}
+        onSaved={vi.fn()}
+        onError={vi.fn()}
+        handle={createRef<DraftHandle>()}
+      />,
+    );
+    expect(screen.getByLabelText("通知にメモを表示する")).toHaveProperty(
+      "checked",
+      false,
+    );
+    fireEvent.click(screen.getByLabelText("通知にメモを表示する"));
+    fireEvent.change(screen.getByLabelText("業務メモ"), {
+      target: { value: "作業場所" },
+    });
+    fireEvent.click(screen.getByLabelText("詳細を閉じる"));
+    await waitFor(() =>
+      expect(api).toHaveBeenCalledWith(
+        "SaveTask",
+        expect.objectContaining({
+          memo: "作業場所",
+          show_memo_in_notice: true,
+        }),
+      ),
+    );
   });
 });

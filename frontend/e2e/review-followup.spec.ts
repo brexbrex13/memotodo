@@ -13,7 +13,13 @@ const service = async (page: any, method: string, ...args: unknown[]) => {
         }),
       ),
   );
-  const value = await response.json();
+  const body = await response.text();
+  let value: any;
+  try {
+    value = JSON.parse(body);
+  } catch {
+    return body;
+  }
   if (value.error) throw new Error(JSON.stringify(value.error));
   return value.result ?? value;
 };
@@ -295,4 +301,105 @@ test("list context menus edit categories and follow task state without opening t
   expect(box!.y + box!.height).toBeLessThanOrEqual(760);
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
+});
+
+test("notification memo is opt-in, images expand without acknowledging, and private mode hides it", async ({
+  page,
+  context,
+}) => {
+  await page.goto("/");
+  const settings = (await service(page, "GetSnapshot")).settings;
+  await service(page, "SaveSettings", {
+    ...settings,
+    private: false,
+    smart_add: false,
+  });
+  const image = await service(
+    page,
+    "SaveImage",
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHgAAAA8CAIAAAAiz+n/AAAAo0lEQVR4nO3QQRHAIADAMMC/qVnAAFamYuWxREGv89ln8L11O+AvjI4YHTE6YnTE6IjREaMjRkeMjhgdMTpidMToiNERoyNGR4yOGB0xOmJ0xOiI0RGjI0ZHjI4YHTE6YnTE6IjREaMjRkeMjhgdMTpidMToiNERoyNGR4yOGB0xOmJ0xOiI0RGjI0ZHjI4YHTE6YnTE6IjREaMjRkeMjhgdeQEW7wLqdTHsdAAAAABJRU5ErkJggg==",
+  );
+  const task = await service(page, "SaveTask", {
+    id: 0,
+    version: 0,
+    title: "メモ付き作業通知",
+    memo: `<p><strong>確認して保存</strong></p><a href="file:///C:/Work%20Files">作業場所</a><img src="${image}"><p>${"長い手順\n".repeat(30)}</p>`,
+    status: "pending",
+    reminder_at: "2000-01-01T00:00:00",
+    category_id: 0,
+  });
+  await page.reload();
+  const n = (await service(page, "GetSnapshot")).notifications.find(
+    (n: any) => n.task_id === task.id && !n.acknowledged,
+  );
+  const notice = await context.newPage();
+  await notice.setViewportSize({ width: 360, height: 330 });
+  await notice.goto("/?window=notifications&notice=" + n.id);
+  await expect(notice.getByLabel("通知のメモ")).toHaveCount(0);
+  await page
+    .locator(".task-row")
+    .filter({ hasText: task.title })
+    .locator(".card-content")
+    .click();
+  const detail = page.getByLabel("タスクの詳細", { exact: true });
+  await expect(detail.getByLabel("通知にメモを表示する")).not.toBeChecked();
+  await detail.getByLabel("通知にメモを表示する").check();
+  await detail.getByLabel("詳細を閉じる").click();
+  await expect(notice.getByLabel("通知のメモ")).toBeVisible();
+  await expect(notice.getByRole("link", { name: "作業場所" })).toHaveAttribute(
+    "href",
+    "file:///C:/Work%20Files",
+  );
+  const img = notice.getByRole("button", {
+    name: "添付画像を拡大",
+    exact: true,
+  });
+  await expect
+    .poll(() =>
+      img.evaluate(
+        (el: HTMLImageElement) => el.complete && el.naturalWidth > 0,
+      ),
+    )
+    .toBe(true);
+  await img.click();
+  await expect(
+    notice.getByRole("dialog", { name: "添付画像の拡大" }),
+  ).toBeVisible();
+  await notice.getByLabel("画像の拡大を閉じる").click();
+  expect(
+    (await service(page, "GetSnapshot")).notifications.find(
+      (x: any) => x.id === n.id,
+    ).acknowledged,
+  ).toBe(false);
+  await expect(
+    notice.getByRole("button", { name: "完了", exact: true }),
+  ).toBeInViewport();
+  expect(
+    await notice.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(360);
+  await notice.screenshot({ path: "/tmp/memotodo-notice-memo.png" });
+  await service(page, "SaveSettings", {
+    ...settings,
+    private: true,
+    smart_add: false,
+  });
+  await notice.reload();
+  await expect(notice.getByLabel("通知のメモ")).toHaveCount(0);
+  await expect(notice.locator(".notice-content")).toContainText("タスクの通知");
+  await service(page, "SaveSettings", {
+    ...settings,
+    private: false,
+    smart_add: false,
+  });
+  await notice.reload();
+  await notice.getByRole("button", { name: "完了", exact: true }).click();
+  await expect
+    .poll(
+      async () =>
+        (await service(page, "GetSnapshot")).tasks.find(
+          (x: any) => x.id === task.id,
+        ).status,
+    )
+    .toBe("done");
+  await notice.close();
 });

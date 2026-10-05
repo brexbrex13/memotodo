@@ -221,10 +221,7 @@ func (a *App) refreshNotice() {
 				delete(a.noticeShown, n.ID)
 			}
 		}
-		height, width := 170, 360
-		if n.Kind == "summary" {
-			height, width = 390, 440
-		}
+		width, height := noticeSize(n, v)
 		if height > screen.WorkArea.Height-24 {
 			height = screen.WorkArea.Height - 24
 		}

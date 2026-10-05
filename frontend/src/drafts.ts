@@ -2,6 +2,7 @@ import { Task } from "./types";
 export const editable = [
   "title",
   "memo",
+  "show_memo_in_notice",
   "deadline",
   "reminder_at",
   "reminder_mode",

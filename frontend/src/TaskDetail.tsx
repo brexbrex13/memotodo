@@ -202,6 +202,16 @@ export function TaskDetail({
             value={draft.title}
             onChange={(e) => change({ title: e.target.value })}
           />
+          <label className="check notice-memo-option">
+            <input
+              type="checkbox"
+              checked={!!draft.show_memo_in_notice}
+              onChange={(e) =>
+                change({ show_memo_in_notice: e.target.checked })
+              }
+            />
+            通知にメモを表示する
+          </label>
           <Editor
             value={draft.memo}
             onChange={(memo) => change({ memo })}
