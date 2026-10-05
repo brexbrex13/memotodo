@@ -23,6 +23,7 @@ type JevStatus struct {
 	Hint          string `json:"hint"`
 	Invalid       bool   `json:"invalid"`
 	Revision      uint64 `json:"revision"`
+	Unavailable   bool   `json:"unavailable"`
 }
 
 var jevProviders = map[string]bool{"typesafe": true, "vercel": true, "cloudflare": true, "custom": true, "openai": true, "local": true}
@@ -93,20 +94,25 @@ func (a *App) suggest(title string, askCategory bool, channel string) (smartadd.
 	}
 	ep := snap.Settings.JevEndpoint()
 	slot := jev.KeySlot(ep)
+	fallback := smartadd.Decide(smartadd.Build(snap, title, 0, false), nil)
 	a.jevMu.Lock()
 	revision := a.jevRevision
 	key := a.jevKeyFor(slot)
+	stopped, bad := a.aiStopped[slot], a.jevBad[slot]
 	a.jevMu.Unlock()
 	if key == "" && !jev.KeyOptional(ep) {
-		return none, nil
+		return fallback, nil
 	}
-	if a.jevIsBad(slot) {
-		return smartadd.Suggestion{Invalid: true}, nil
+	if stopped || bad {
+		fallback.Invalid, fallback.Unavailable = bad, true
+		return fallback, nil
 	}
 	client, e := a.jevFor(ep, key)
 	if e != nil {
 		log.Printf("jev: %v", e)
-		return none, nil
+		a.finishAIConnection(slot, true, false, revision)
+		fallback.Unavailable = true
+		return fallback, nil
 	}
 	timeout := aiTimeout(snap.Settings.AITimeoutSeconds, ep.Provider)
 	ctx, cancel := a.startAIRequest(channel, timeout)
@@ -115,23 +121,33 @@ func (a *App) suggest(title string, askCategory bool, channel string) (smartadd.
 	for attempt := 0; attempt < 2; attempt++ {
 		r := smartadd.Build(snap, title, limit, askCategory)
 		answers, e := client.Ask(ctx, r.State, r.Questions)
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return none, nil
+		}
 		if !a.aiRequestCurrent(revision, snap.Settings.JevEndpoint(), snap.Settings.SmartAdd) {
 			return none, nil
 		}
 		switch {
 		case e == nil:
 			return smartadd.Decide(r, answers), nil
+		case errors.Is(e, context.Canceled):
+			return fallback, nil
 		case errors.Is(e, jev.ErrUnauthorized):
-			a.setJevBadCurrent(slot, true, revision)
-			return smartadd.Suggestion{Invalid: true}, nil
+			a.finishAIConnection(slot, true, true, revision)
+			fallback.Invalid, fallback.Unavailable = true, true
+			return fallback, nil
 		case errors.Is(e, jev.ErrTooLarge) && attempt == 0:
 			limit = max(len(r.State.OpenTasks)/2, 1)
 		default:
 			log.Printf("jev: %v", e)
-			return none, nil
+			a.finishAIConnection(slot, true, false, revision)
+			fallback.Unavailable = true
+			return fallback, nil
 		}
 	}
-	return none, nil
+	a.finishAIConnection(slot, true, false, revision)
+	fallback.Unavailable = true
+	return fallback, nil
 }
 
 // GetJevStatus reports on provider, or on the provider in saved settings when it is "".
@@ -151,6 +167,7 @@ func (a *App) GetJevStatus(provider string) JevStatus {
 	supported := a.jevKeys != nil && a.jevKeys.Supported()
 	key := a.jevKeyFor(provider)
 	st := JevStatus{KeyConfigured: key != "", Supported: supported || jev.KeyOptional(ep), Configured: key != "" || jev.KeyOptional(ep), Invalid: a.jevBad[providerName(provider)], Revision: a.jevRevision}
+	st.Unavailable = a.aiStopped[providerName(provider)]
 	if len(key) >= 8 {
 		st.Hint = key[len(key)-4:]
 	}
@@ -188,6 +205,7 @@ func (a *App) saveJevKey(provider, key string) error {
 		a.jevBad = map[string]bool{}
 	}
 	a.jevBad[provider] = false
+	delete(a.aiStopped, provider)
 	a.jevRevision++
 	for _, p := range a.aiPending {
 		p.cancel()
@@ -242,19 +260,43 @@ func (a *App) TestJevKey(ep jev.Endpoint) (string, error) {
 	}
 	switch {
 	case e == nil:
-		a.setJevBadCurrent(slot, false, revision)
-		a.jevMu.Lock()
-		a.jevRevision++
-		a.jevMu.Unlock()
-		a.emitJev()
+		if !a.finishAIConnection(slot, false, false, revision) {
+			return "", errors.New("接続設定が変更されました。もう一度確認してください")
+		}
 		return "ok", nil
 	case errors.Is(e, jev.ErrUnauthorized):
-		a.setJevBadCurrent(slot, true, revision)
+		a.finishAIConnection(slot, true, true, revision)
 		return "invalid", nil
 	default:
 		log.Printf("jev: %v", e)
+		a.finishAIConnection(slot, true, false, revision)
 		return "unreachable", nil
 	}
+}
+
+func (a *App) finishAIConnection(slot string, stopped, bad bool, revision uint64) bool {
+	a.jevMu.Lock()
+	if a.jevRevision != revision {
+		a.jevMu.Unlock()
+		return false
+	}
+	if a.aiStopped == nil {
+		a.aiStopped = map[string]bool{}
+	}
+	if a.jevBad == nil {
+		a.jevBad = map[string]bool{}
+	}
+	if stopped && a.jevBad[slot] {
+		bad = true
+	}
+	a.aiStopped[slot], a.jevBad[slot] = stopped, bad
+	a.jevRevision++
+	for _, p := range a.aiPending {
+		p.cancel()
+	}
+	a.jevMu.Unlock()
+	a.emitJev()
+	return true
 }
 
 func (a *App) emitJev() {

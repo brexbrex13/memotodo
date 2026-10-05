@@ -63,6 +63,16 @@ func main() {
 	service.main = service.desktop.Window.NewWithOptions(application.WebviewWindowOptions{Name: "board", Title: "MemoTodo", Width: width, Height: height, MinWidth: 360, MinHeight: 420, Frameless: true, Windows: application.WindowsWindow{NonClientRegionSupport: true}, MinimiseButtonState: application.ButtonHidden, MaximiseButtonState: application.ButtonHidden, URL: "/", BackgroundColour: application.NewRGB(247, 246, 241)})
 	service.notice = service.desktop.Window.NewWithOptions(application.WebviewWindowOptions{Name: "notifications", Title: "MemoTodo 通知", Width: 360, Height: 170, Hidden: true, Frameless: true, AlwaysOnTop: true, DisableResize: true, URL: "/?window=notifications", Windows: application.WindowsWindow{HiddenOnTaskbar: false, ExStyle: noticeStyle()}, BackgroundColour: application.NewRGB(247, 246, 241)})
 	service.main.RegisterHook(events.Common.WindowMaximise, func(ev *application.WindowEvent) { ev.Cancel() })
+	rememberMain := func(*application.WindowEvent) {
+		if !service.mainBoundsReady.Load() {
+			return
+		}
+		if e := service.saveMainWindowBounds(); e != nil {
+			service.desktop.Event.Emit("board:error", e.Error())
+		}
+	}
+	service.main.OnWindowEvent(events.Windows.WindowEndMove, rememberMain)
+	service.main.OnWindowEvent(events.Windows.WindowEndResize, rememberMain)
 	service.main.RegisterHook(events.Common.WindowClosing, func(ev *application.WindowEvent) {
 		if service.quitting.Load() {
 			return
@@ -105,6 +115,8 @@ func main() {
 	os.WriteFile(filepath.Join(dir, "notify_icon.png"), icon, 0644)
 	notify.Init(filepath.Join(dir, "notify_icon.png"), func() { service.openMain(0) })
 	service.desktop.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+		service.restoreMainWindowBounds()
+		service.mainBoundsReady.Store(true)
 		service.shortcut = newShortcutManager(service.showQuickAtCursor)
 		if v, e := store.Snapshot(); e == nil {
 			if e = service.shortcut.Change(v.Settings.QuickShortcut); e != nil {

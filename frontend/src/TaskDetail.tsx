@@ -5,7 +5,7 @@ import { Category, Snapshot, Task } from "./types";
 import { Editor } from "./Editor";
 import { ReminderFields } from "./ReminderFields";
 import { Icon } from "./Icons";
-export type DraftHandle = { flush: () => Promise<void> };
+export type DraftHandle = { leave: () => Promise<boolean> };
 export function TaskDetail({
   task,
   defaultTime,
@@ -25,7 +25,9 @@ export function TaskDetail({
 }) {
   const [draft, setDraft] = useState(task),
     [status, setStatus] = useState("保存済み"),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [leaveDialog, setLeaveDialog] = useState(false);
+  const pendingLeave = useRef<((result: boolean) => void) | null>(null);
   const current = useRef(task),
     saved = useRef(task),
     chain = useRef(Promise.resolve()),
@@ -91,7 +93,30 @@ export function TaskDetail({
       });
     return chain.current;
   };
-  handle.current = { flush };
+  const dirty = () =>
+    editable.some((key) => current.current[key] !== saved.current[key]);
+  const discard = () => {
+    localStorage.removeItem("draft:" + task.id);
+    current.current = { ...saved.current };
+    setDraft(current.current);
+    setStatus("保存済み");
+  };
+  const requestLeave = () => {
+    if (busy || uploading.current) return Promise.resolve(false);
+    if (!dirty()) return Promise.resolve(true);
+    if (pendingLeave.current) return Promise.resolve(false);
+    setLeaveDialog(true);
+    return new Promise<boolean>((resolve) => {
+      pendingLeave.current = resolve;
+    });
+  };
+  const finishLeave = (result: boolean) => {
+    setLeaveDialog(false);
+    const resolve = pendingLeave.current;
+    pendingLeave.current = null;
+    resolve?.(result);
+  };
+  handle.current = { leave: requestLeave };
   useEffect(() => {
     const raw = localStorage.getItem("draft:" + task.id);
     if (raw) {
@@ -110,26 +135,38 @@ export function TaskDetail({
     }
     return () => {
       handle.current = null;
+      pendingLeave.current?.(false);
     };
   }, []);
-  useEffect(() => {
-    if (status === "未保存" || status === "未保存の入力を復元しました") {
-      const timer = setTimeout(() => void flush().catch(onError), 650);
-      return () => clearTimeout(timer);
-    }
-  }, [draft, status]);
-  const leave = async () => {
+  const saveAndClose = async () => {
+    setBusy(true);
     try {
       await flush();
       onClose();
     } catch (e) {
       onError(e);
+    } finally {
+      setBusy(false);
     }
   };
-  const state = async (value: string) => {
+  const leave = async () => {
+    if (await requestLeave()) onClose();
+  };
+  const saveBeforeLeave = async () => {
     setBusy(true);
     try {
       await flush();
+      finishLeave(true);
+    } catch (e) {
+      onError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const state = async (value: string) => {
+    if (!(await requestLeave())) return;
+    setBusy(true);
+    try {
       await api("SetState", task.id, value);
       onSaved();
       onClose();
@@ -186,7 +223,8 @@ export function TaskDetail({
           )}
           <button
             aria-label="詳細を閉じる"
-            data-tip="保存して閉じる"
+            data-tip="詳細を閉じる"
+            disabled={busy}
             onClick={() => void leave()}
           >
             <Icon name="close" />
@@ -202,6 +240,16 @@ export function TaskDetail({
             value={draft.title}
             onChange={(e) => change({ title: e.target.value })}
           />
+          <label className="check notice-memo-option">
+            <input
+              type="checkbox"
+              checked={!!draft.show_memo_in_notice}
+              onChange={(e) =>
+                change({ show_memo_in_notice: e.target.checked })
+              }
+            />
+            通知にメモを表示する
+          </label>
           <Editor
             value={draft.memo}
             onChange={(memo) => change({ memo })}
@@ -239,13 +287,66 @@ export function TaskDetail({
       </div>
       <footer>
         <button
+          disabled={busy}
+          onClick={() => {
+            discard();
+            onClose();
+          }}
+        >
+          変更を破棄
+        </button>
+        <button
           className="primary"
           disabled={busy}
-          onClick={() => void leave()}
+          onClick={() => void saveAndClose()}
         >
           今すぐ保存
         </button>
       </footer>
+      {leaveDialog && (
+        <div className="overlay">
+          <section
+            className="modal unsaved-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="未保存の変更"
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.stopPropagation();
+                finishLeave(false);
+              }
+            }}
+          >
+            <h2>変更はまだ保存されていません</h2>
+            <p>保存するまで、期限・通知などの変更は反映されません。</p>
+            <div className="actions">
+              <button
+                disabled={busy}
+                autoFocus
+                onClick={() => finishLeave(false)}
+              >
+                編集に戻る
+              </button>
+              <button
+                disabled={busy}
+                onClick={() => {
+                  discard();
+                  finishLeave(true);
+                }}
+              >
+                破棄して続ける
+              </button>
+              <button
+                className="primary"
+                disabled={busy}
+                onClick={() => void saveBeforeLeave()}
+              >
+                保存して続ける
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </aside>
   );
 }

@@ -1,6 +1,24 @@
 package main
 
-import "github.com/wailsapp/wails/v3/pkg/application"
+import (
+	"github.com/wailsapp/wails/v3/pkg/application"
+	"memotodo/internal/board"
+	"strings"
+)
+
+func noticeSize(n board.Notification, snapshot board.Snapshot) (width, height int) {
+	if n.Kind == "summary" {
+		return 440, 390
+	}
+	if !snapshot.Settings.Private {
+		for _, t := range snapshot.Tasks {
+			if t.ID == n.TaskID && t.ShowMemoInNotice && strings.TrimSpace(t.Memo) != "" {
+				return 360, 330
+			}
+		}
+	}
+	return 360, 170
+}
 
 func noticeScreen(app *application.App, monitor string) *application.Screen {
 	s := app.Screen.GetPrimary()

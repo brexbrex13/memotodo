@@ -50,16 +50,12 @@ test("local AI without credentials, settings placement and suggestion", async ({
       .getByLabel("ベースURL")
       .fill(`http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`);
     await page.getByLabel("モデル名").fill("test-local");
-    await page.getByRole("button", { name: "接続テスト", exact: true }).click();
+    await page.getByRole("button", { name: "接続確認", exact: true }).click();
     await expect(page.locator(".jev-key [role=status]")).toContainText(
       "接続できました",
     );
     await page.getByLabel("AIの待ち時間（秒）").fill("30");
-    await page
-      .getByLabel(
-        "タスク追加時にカテゴリ・重要・期限・通知を推定し、似たタスクを知らせる",
-      )
-      .check();
+    await page.getByLabel("AIでタスク入力を補助する").check();
     await page.getByLabel("AIの接続方式").scrollIntoViewIfNeeded();
     await page.screenshot({ path: "/tmp/memotodo-ai-settings.png" });
     await page.getByRole("button", { name: "今すぐ保存", exact: true }).click();
@@ -70,11 +66,7 @@ test("local AI without credentials, settings placement and suggestion", async ({
     await page.getByLabel("新しい付箋").fill("");
     await page.getByRole("button", { name: "メニュー", exact: true }).click();
     await page.getByRole("button", { name: "設定", exact: true }).click();
-    await page
-      .getByLabel(
-        "タスク追加時にカテゴリ・重要・期限・通知を推定し、似たタスクを知らせる",
-      )
-      .uncheck();
+    await page.getByLabel("AIでタスク入力を補助する").uncheck();
     await page.getByLabel("AIの接続方式").selectOption("typesafe");
     await page.getByRole("button", { name: "今すぐ保存", exact: true }).click();
   } finally {

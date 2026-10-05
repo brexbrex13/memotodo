@@ -62,7 +62,7 @@ it("saves a key for the selected provider without keeping it in the field", asyn
   );
   expect(field.value).toBe("");
   expect(keys).toEqual({ typesafe: "tsk-secret-1234" });
-  fireEvent.click(screen.getByText("接続テスト"));
+  fireEvent.click(screen.getByText("接続確認"));
   await screen.findByText("キーが無効です");
   expect(
     vi.mocked(api).mock.calls.find((c) => c[0] === "TestJevKey")?.[1],
@@ -88,7 +88,7 @@ it("switches the key label, status and destination with the provider", async () 
     expect(field.placeholder).toBe("設定済み（末尾 ••••9876）"),
   );
   expect(screen.getByText(/Cloudflare に送信します/)).toBeTruthy();
-  fireEvent.click(screen.getByText("接続テスト"));
+  fireEvent.click(screen.getByText("接続確認"));
   await screen.findByText("キーが無効です");
   expect(
     vi.mocked(api).mock.calls.find((c) => c[0] === "TestJevKey")?.[1],
@@ -189,7 +189,7 @@ it("does not label a keyless local connection as a saved API key", async () => {
   )) as HTMLInputElement;
   await waitFor(() => expect(field.placeholder).toBe("未設定"));
   expect((screen.getByText("削除") as HTMLButtonElement).disabled).toBe(true);
-  expect((screen.getByText("接続テスト") as HTMLButtonElement).disabled).toBe(
+  expect((screen.getByText("接続確認") as HTMLButtonElement).disabled).toBe(
     false,
   );
 });

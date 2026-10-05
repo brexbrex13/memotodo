@@ -224,14 +224,17 @@ test("detail groups content with memo and top icon actions save importance", asy
     .getByRole("button", { name: "重要", exact: true });
   await important.click();
   await expect(important).toHaveAttribute("aria-pressed", "true");
-  await expect
-    .poll(
-      async () =>
-        (await service(page, "GetSnapshot")).tasks.find(
-          (t: any) => t.id === task.id,
-        ).important,
-    )
-    .toBe(true);
+  expect(
+    (await service(page, "GetSnapshot")).tasks.find(
+      (t: any) => t.id === task.id,
+    ).important,
+  ).toBe(false);
+  await detail.getByRole("button", { name: "今すぐ保存", exact: true }).click();
+  await page
+    .locator("article")
+    .filter({ hasText: task.title })
+    .locator(".card-content")
+    .click();
   await detail
     .locator("header")
     .getByRole("button", { name: "完了", exact: true })

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Task } from "./types";
 import {
   applySuggestion,
   AutoFields,
@@ -22,6 +23,7 @@ export function useSmartAdd({
   session = () => "",
   scope = "",
   hide = [],
+  existingTasks = [],
 }: {
   text: string;
   options: QuickOptions;
@@ -33,10 +35,12 @@ export function useSmartAdd({
   session?: () => string;
   scope?: string;
   hide?: Field[];
+  existingTasks?: Task[];
 }) {
   const [auto, setAuto] = useState<AutoFields>({}),
     [duplicate, setDuplicate] = useState<Suggestion["duplicate"]>(null),
     [invalid, setInvalid] = useState(false),
+    [unavailable, setUnavailable] = useState(false),
     [composeTick, setComposeTick] = useState(0);
   const touched = useRef(new Set<Field>()),
     autoRef = useRef<AutoFields>({}),
@@ -45,9 +49,11 @@ export function useSmartAdd({
     composing = useRef(false),
     lastAsked = useRef(""),
     seq = useRef(0);
+  const autoTitle = useRef(text.trim());
   optionsRef.current = options;
   textRef.current = text;
   const commit = (next: { options: QuickOptions; auto: AutoFields }) => {
+    autoTitle.current = textRef.current.trim();
     autoRef.current = next.auto;
     optionsRef.current = next.options;
     setAuto(next.auto);
@@ -60,11 +66,21 @@ export function useSmartAdd({
     autoRef.current = {};
     setAuto({});
     setDuplicate(null);
+    setInvalid(false);
+    setUnavailable(false);
   };
   const touch = (field: Field) => {
     touched.current.add(field);
-    if (autoRef.current[field] === undefined) return;
     const next = { ...autoRef.current };
+    // Editing a linked notification also accepts the date it depends on.
+    if (
+      field === "reminder" &&
+      optionsRef.current.reminder_mode === "deadline" &&
+      autoRef.current.deadline !== undefined
+    ) {
+      touched.current.add("deadline");
+      delete next.deadline;
+    }
     delete next[field];
     autoRef.current = next;
     setAuto(next);
@@ -77,6 +93,7 @@ export function useSmartAdd({
     seq.current++;
     lastAsked.current = "";
     setInvalid(false);
+    setUnavailable(false);
     setDuplicate(null);
     if (Object.keys(autoRef.current).length) {
       commit(
@@ -90,6 +107,20 @@ export function useSmartAdd({
       );
     }
   }, [scope, enabled]);
+  useEffect(() => {
+    if (autoTitle.current !== text.trim()) {
+      commit(
+        applySuggestion(
+          optionsRef.current,
+          touched.current,
+          autoRef.current,
+          null,
+          defaultTime,
+        ),
+      );
+      setDuplicate(null);
+    }
+  }, [text]);
   useEffect(() => {
     const title = text.trim();
     const key = scope + "\u0000" + title;
@@ -108,7 +139,13 @@ export function useSmartAdd({
       setDuplicate(null);
       return;
     }
-    if (!enabled || invalid || title.length < 2 || key === lastAsked.current)
+    if (
+      !enabled ||
+      invalid ||
+      unavailable ||
+      title.length < 2 ||
+      key === lastAsked.current
+    )
       return;
     const timer = setTimeout(() => {
       if (composing.current) return;
@@ -124,10 +161,8 @@ export function useSmartAdd({
             started !== session()
           )
             return;
-          if (s.invalid) {
-            setInvalid(true);
-            return;
-          }
+          setInvalid(!!s.invalid);
+          setUnavailable(!!s.unavailable);
           commit(
             applySuggestion(
               optionsRef.current,
@@ -147,13 +182,41 @@ export function useSmartAdd({
       clearTimeout(timer);
       seq.current++;
     };
-  }, [text, enabled, invalid, composeTick, scope]);
+  }, [text, enabled, invalid, unavailable, composeTick, scope]);
+  const exact =
+    enabled && text.trim()
+      ? existingTasks.find(
+          (t) =>
+            t.status === "pending" &&
+            !t.deleted_at &&
+            t.title.trim().toLocaleLowerCase() ===
+              text.trim().toLocaleLowerCase(),
+        )
+      : undefined;
   return {
     chips: chipLabels(auto, options, categories).filter(
       (c) => !hide.includes(c.field),
     ),
-    duplicate,
+    duplicate: exact
+      ? { task_id: exact.id, title: exact.title }
+      : autoTitle.current === text.trim()
+        ? duplicate
+        : null,
     invalid,
+    unavailable,
+    currentOptions: () =>
+      autoTitle.current === textRef.current.trim()
+        ? optionsRef.current
+        : applySuggestion(
+            optionsRef.current,
+            touched.current,
+            autoRef.current,
+            null,
+            defaultTime,
+          ).options,
+    isAutomatic: (field: Field) =>
+      autoTitle.current === textRef.current.trim() &&
+      autoRef.current[field] !== undefined,
     setInvalid,
     touch,
     drop,

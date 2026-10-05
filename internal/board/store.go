@@ -181,6 +181,14 @@ func validateTask(t Task) error {
 	return nil
 }
 func (s *Store) SaveTask(t Task) (Task, error) {
+	return s.saveTask(t, false)
+}
+
+func (s *Store) SaveSuggestedTask(t Task, automaticCategory bool) (Task, error) {
+	return s.saveTask(t, automaticCategory && t.ID == 0)
+}
+
+func (s *Store) saveTask(t Task, automaticCategory bool) (Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	tx, beginErr := s.db.Begin()
@@ -197,6 +205,15 @@ func (s *Store) SaveTask(t Task) (Task, error) {
 	}
 	if e := validateTask(t); e != nil {
 		return t, e
+	}
+	if automaticCategory && t.CategoryID != 0 {
+		c, e := load[Category](tx, "categories", t.CategoryID)
+		if e != nil && e != sql.ErrNoRows {
+			return t, e
+		}
+		if e != nil || c.Dormant {
+			t.CategoryID = 0
+		}
 	}
 	if t.CategoryID == 0 {
 		var e error

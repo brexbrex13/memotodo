@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { Category, ColorPreset, Snapshot } from "./types";
 export const presets: ColorPreset[] = [
@@ -14,12 +14,26 @@ export function CategoryManager({
   onClose,
   onSaved,
   onError,
+  initialCategoryId,
 }: {
   data: Snapshot;
   onClose: () => void;
   onSaved: () => Promise<void>;
   onError: (e: unknown) => void;
+  initialCategoryId?: number;
 }) {
+  const inputs = useRef(new Map<number, HTMLInputElement>());
+  const addInput = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (initialCategoryId === undefined) return;
+    const input =
+      initialCategoryId > 0
+        ? inputs.current.get(initialCategoryId)
+        : addInput.current;
+    input?.scrollIntoView?.({ block: "nearest" });
+    input?.focus();
+    input?.select();
+  }, [initialCategoryId]);
   const [palette, setPalette] = useState<number | null>(null),
     [custom, setCustom] = useState<{
       value: ColorPreset;
@@ -102,6 +116,10 @@ export function CategoryManager({
           <section className="manage-category" key={c.id}>
             <div className="manage-row">
               <input
+                ref={(el) => {
+                  if (el) inputs.current.set(c.id, el);
+                  else inputs.current.delete(c.id);
+                }}
                 aria-label={c.name + "の名前"}
                 defaultValue={c.name}
                 key={c.name}
@@ -308,6 +326,7 @@ export function CategoryManager({
           }}
         >
           <input
+            ref={addInput}
             disabled={busy}
             aria-label="新しいカテゴリ名"
             value={name}

@@ -24,6 +24,8 @@ import (
 )
 
 type App struct {
+	imageViewer          *application.WebviewWindow
+	imageViewerMu        sync.Mutex
 	shortcut             *shortcutManager
 	settingsMu           sync.Mutex
 	shortcutError        string
@@ -61,6 +63,8 @@ type App struct {
 	aiPending            map[string]pendingAI
 	aiSequence           uint64
 	jevBad               map[string]bool // providers whose saved key was rejected
+	aiStopped            map[string]bool // session only; a successful connection check resumes AI
+	mainBoundsReady      atomic.Bool
 }
 
 func (a *App) start() { a.startOnce.Do(func() { a.wg.Add(1); go a.run() }) }
@@ -219,10 +223,7 @@ func (a *App) refreshNotice() {
 				delete(a.noticeShown, n.ID)
 			}
 		}
-		height, width := 170, 360
-		if n.Kind == "summary" {
-			height, width = 390, 440
-		}
+		width, height := noticeSize(n, v)
 		if height > screen.WorkArea.Height-24 {
 			height = screen.WorkArea.Height - 24
 		}
@@ -295,12 +296,34 @@ func (a *App) openMain(id int64) {
 	}
 	a.main.Show()
 	a.main.UnMinimise()
+	a.ensureMainVisible()
 	a.main.Focus()
 	if id != 0 {
 		a.desktop.Event.Emit("board:open", id)
 	}
 }
 func (a *App) GetSnapshot() (board.Snapshot, error) { return a.store.Snapshot() }
+func (a *App) SaveSuggestedTask(v board.Task, automaticCategory bool) (board.Task, error) {
+	t, e := a.store.SaveSuggestedTask(v, automaticCategory)
+	if e == nil {
+		a.changed()
+	}
+	return t, e
+}
+func (a *App) TrashCompleted() (int, error) {
+	n, e := a.store.TrashCompleted()
+	if n > 0 {
+		a.changed()
+	}
+	return n, e
+}
+func (a *App) EmptyTrash() (int, error) {
+	n, e := a.store.EmptyTrash()
+	if n > 0 {
+		a.changed()
+	}
+	return n, e
+}
 func (a *App) SaveTask(v board.Task) (board.Task, error) {
 	t, e := a.store.SaveTask(v)
 	if e == nil {
@@ -430,6 +453,7 @@ func (a *App) SaveSettings(v board.Settings) error {
 		if a.jevBad != nil {
 			delete(a.jevBad, jev.KeySlot(v.JevEndpoint()))
 		}
+		delete(a.aiStopped, jev.KeySlot(v.JevEndpoint()))
 		a.jevMu.Unlock()
 		a.emitJev()
 	}
@@ -479,9 +503,9 @@ func (a *App) SetQuickAddExpanded(expanded bool) {
 }
 func quickAddHeight(options bool, rows int) int {
 	if options {
-		return 430
+		return 430 + min(max(rows, 0), 12)*26
 	}
-	return 105 + min(max(rows, 0), 3)*26
+	return 105 + min(max(rows, 0), 12)*26
 }
 func (a *App) SetQuickAddLayout(expanded, options bool, rows int, generation uint64) {
 	application.InvokeSync(func() {
@@ -573,6 +597,10 @@ func (a *App) ReorderCategories(ids []int64) error {
 }
 func (a *App) SaveMainWindowSize() error { w, h := a.main.Size(); return a.store.SaveWindowSize(w, h) }
 func (a *App) FinishClose(mode string) {
+	if e := a.saveMainWindowBounds(); e != nil {
+		a.desktop.Event.Emit("board:error", e.Error())
+		return
+	}
 	if e := a.SaveMainWindowSize(); e != nil {
 		a.desktop.Event.Emit("board:error", e.Error())
 		return

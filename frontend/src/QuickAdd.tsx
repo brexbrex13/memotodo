@@ -24,6 +24,7 @@ export function QuickAdd() {
     input = useRef<HTMLInputElement>(null),
     addLock = useRef(false);
   const [jevStatus, setJevStatus] = useState<JevStatus | null>(null);
+  const [hintHeight, setHintHeight] = useState(0);
   useEffect(() => {
     localStorage.removeItem("tray-quick-draft");
     localStorage.removeItem("tray-quick-options");
@@ -45,6 +46,7 @@ export function QuickAdd() {
     enabled: smartEnabled,
     defaultTime,
     categories: snapshot?.categories ?? [],
+    existingTasks: snapshot?.tasks ?? [],
     ask: (title) =>
       api<Suggestion>("SuggestQuickAdd", title, generationRef.current),
     scope: JSON.stringify([
@@ -56,10 +58,12 @@ export function QuickAdd() {
     ]),
     session: () => `${operation.current}:${generationRef.current}`,
   });
-  const rows =
+  const rows = Math.max(
+    Math.ceil(hintHeight / 26),
     (smart.chips.length ? 1 : 0) +
-    (smart.duplicate ? 1 : 0) +
-    (smart.invalid ? 1 : 0);
+      (smart.duplicate ? 1 : 0) +
+      (smart.invalid || smart.unavailable ? 1 : 0),
+  );
   useEffect(() => {
     void api("SetQuickAddLayout", false, optionsOpen, rows, generation).catch(
       (e) => setError(String(e)),
@@ -166,18 +170,23 @@ export function QuickAdd() {
     setBusy(true);
     setError("");
     // A suggested category may have been deleted since; fall back to the default.
+    const currentOptions = smart.currentOptions();
     const category_id = snapshot?.categories?.some(
-      (c) => c.id === options.category_id,
+      (c) => c.id === currentOptions.category_id,
     )
-      ? options.category_id
+      ? currentOptions.category_id
       : 0;
     try {
-      await api("SaveTask", {
-        ...emptyTask(),
-        title: text,
-        ...options,
-        category_id,
-      });
+      await api(
+        "SaveSuggestedTask",
+        {
+          ...emptyTask(),
+          title: text,
+          ...currentOptions,
+          category_id,
+        },
+        smart.isAutomatic("category"),
+      );
       if (token !== operation.current) return;
       setOptions(blankOptions());
       smart.reset();
@@ -264,6 +273,7 @@ export function QuickAdd() {
       {!nativeSuggestions && suggest.list}
       <SmartHints
         smart={smart}
+        onHeight={setHintHeight}
         onOpen={(id) =>
           void api("OpenTask", id).catch((e) => setError(String(e)))
         }

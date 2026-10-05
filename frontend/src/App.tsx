@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  MouseEvent as ReactMouseEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   DndContext,
   PointerSensor,
@@ -34,6 +40,9 @@ import { TaskDetail, DraftHandle } from "./TaskDetail";
 import { SeriesForm } from "./SeriesForm";
 import { SettingsForm } from "./SettingsForm";
 import { CategoryManager } from "./CategoryManager";
+import { CategoryTabs } from "./CategoryTabs";
+import { ContextMenu } from "./ContextMenu";
+import { MemoPreview } from "./MemoPreview";
 import { NotificationPause } from "./NotificationPause";
 import { ReminderFields } from "./ReminderFields";
 import { useSuggestions } from "./Suggestions";
@@ -84,6 +93,7 @@ function Row({
   toggleImportant,
   toggleToday,
   drag,
+  onContextMenu,
 }: {
   t: Task;
   u: string;
@@ -93,11 +103,13 @@ function Row({
   toggleImportant: () => void;
   toggleToday: () => void;
   drag: boolean;
+  onContextMenu: (event: ReactMouseEvent) => void;
 }) {
   const s = useSortable({ id: t.id, disabled: !drag });
   return (
     <article
       ref={s.setNodeRef}
+      onContextMenu={onContextMenu}
       style={{
         transform: CSS.Transform.toString(s.transform),
         transition: s.transition,
@@ -192,17 +204,20 @@ function Group({
   toggle,
   count,
   children,
+  onContextMenu,
 }: {
   c: Category;
   collapsed: boolean;
   toggle: () => void;
   count: number;
   children: React.ReactNode;
+  onContextMenu: (event: ReactMouseEvent) => void;
 }) {
   const drop = useDroppable({ id: "category:" + c.id });
   return (
     <section
       ref={drop.setNodeRef}
+      onContextMenu={onContextMenu}
       className={"category" + (drop.isOver ? " drop-over" : "")}
       style={{ background: c.color, color: c.text_color || "#302d25" }}
       aria-label={c.name}
@@ -243,6 +258,29 @@ export default function App() {
     [menu, setMenu] = useState(false),
     [deadline, setDeadline] = useState(""),
     [search, setSearch] = useState(false);
+  const [categoryFocus, setCategoryFocus] = useState<number | undefined>(
+    undefined,
+  );
+  const [context, setContext] = useState<{
+    x: number;
+    y: number;
+    categoryId?: number;
+    task?: Task;
+  } | null>(null);
+  const showContext = (
+    event: ReactMouseEvent,
+    target: { categoryId?: number; task?: Task },
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setContext({ x: event.clientX, y: event.clientY, ...target });
+  };
+  const manageCategory = (id: number) =>
+    void navigate(() => {
+      setCategoryFocus(id);
+      setPanel("categories");
+    });
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [temporaryCollapsed, setTemporaryCollapsed] = useState<
     Record<number, boolean>
   >({});
@@ -289,6 +327,7 @@ export default function App() {
       !recurringOnly,
     defaultTime: data?.settings.reminder_default_time || "09:00",
     categories: data?.categories ?? [],
+    existingTasks: data?.tasks ?? [],
     ask: (title) => api<Suggestion>("SuggestTask", title, category <= 0),
     scope: JSON.stringify([
       category,
@@ -325,10 +364,10 @@ export default function App() {
       report(e);
     }
   }, [report]);
-  const flush = () => handle.current?.flush() ?? Promise.resolve();
+  const leaveDetail = () => handle.current?.leave() ?? Promise.resolve(true);
   const navigate = async (fn: () => void) => {
     try {
-      await flush();
+      if (!(await leaveDetail())) return;
       setSelected(null);
       setMenu(false);
       setDeadline("");
@@ -339,12 +378,16 @@ export default function App() {
   };
   const open = async (t: Task) => {
     try {
-      await flush();
+      if (!(await leaveDetail())) return;
 
+      const latest = await api<Snapshot>("GetSnapshot");
+      const target = latest.tasks.find((current) => current.id === t.id);
+      if (!target) return;
+      setData(latest);
       setPanel("");
       setDeadline("");
       setSelected(null);
-      setTimeout(() => setSelected(t), 0);
+      setTimeout(() => setSelected(target), 0);
     } catch (e) {
       report(e);
     }
@@ -374,7 +417,7 @@ export default function App() {
   };
   const closeBoard = async (mode = "hide") => {
     try {
-      await flush();
+      if (!(await leaveDetail())) return;
       resetOperation();
       await api("FinishClose", mode);
     } catch (e) {
@@ -386,8 +429,7 @@ export default function App() {
     void api("Ready", "board").catch(report);
     const off = [
       on("board:notices", () => {
-        setPanel("notices");
-        setSelected(null);
+        void navigate(() => setPanel("notices"));
       }),
       on("board:changed", () => void reload()),
       on("board:error", report),
@@ -525,18 +567,23 @@ export default function App() {
     const target =
       category > 0
         ? category
-        : categories.some((c) => c.id === quickOptions.category_id)
-          ? quickOptions.category_id
+        : categories.some((c) => c.id === smart.currentOptions().category_id)
+          ? smart.currentOptions().category_id
           : categories[0]?.id || 0;
     try {
-      await api("SaveTask", {
-        ...emptyTask(target),
-        title: quick,
-        ...quickOptions,
-        category_id: target,
-        important: important || quickOptions.important,
-        today_date: todayOnly ? date() : "",
-      });
+      const currentOptions = smart.currentOptions();
+      await api(
+        "SaveSuggestedTask",
+        {
+          ...emptyTask(target),
+          title: quick,
+          ...currentOptions,
+          category_id: target,
+          important: important || currentOptions.important,
+          today_date: todayOnly ? date() : "",
+        },
+        category <= 0 && smart.isAutomatic("category"),
+      );
       setQuick("");
       setQuickOptions(blankOptions());
       smart.reset();
@@ -559,12 +606,45 @@ export default function App() {
   };
   const state = async (t: Task, value: string) => {
     try {
-      if (selected?.id === t.id) await flush();
+      if (selected?.id === t.id && !(await leaveDetail())) return;
       await api("SetState", t.id, value);
       if (selected?.id === t.id) setSelected(null);
       await reload();
     } catch (e) {
       report(e);
+    }
+  };
+  const bulkDelete = async (permanent: boolean) => {
+    if (bulkBusy) return;
+    setBulkBusy(true);
+    try {
+      if (!(await leaveDetail())) return;
+      const latest = await api<Snapshot>("GetSnapshot");
+      const count = latest.tasks.filter((t) =>
+        permanent ? !!t.deleted_at : !t.deleted_at && t.status === "done",
+      ).length;
+      if (
+        !count ||
+        !confirm(
+          permanent
+            ? `ごみ箱の${count}件を完全削除しますか？タスクと不要になった内部画像は元に戻せません。`
+            : `完了済みの${count}件をすべてごみ箱へ移動しますか？検索・絞り込みに関係なく全件が対象です。`,
+        )
+      )
+        return;
+      await api(permanent ? "EmptyTrash" : "TrashCompleted");
+      if (
+        selected &&
+        (permanent ? !!selected.deleted_at : selected.status === "done")
+      ) {
+        localStorage.removeItem("draft:" + selected.id);
+        setSelected(null);
+      }
+    } catch (e) {
+      report(e);
+    } finally {
+      await reload();
+      setBulkBusy(false);
     }
   };
   if (!data)
@@ -618,7 +698,7 @@ export default function App() {
     .filter((c) => todayOnly || category < 0 || c.id === category)
     .filter(
       (c) =>
-        (!recurringOnly && !todayOnly) ||
+        (view === "board" && !recurringOnly && !todayOnly) ||
         tasks.some((t) => t.category_id === c.id),
     );
   const drag = view === "board" && !todayOnly && !query && !important && !dated;
@@ -631,7 +711,7 @@ export default function App() {
       : tasks.find((t) => t.id === e.over?.id)?.category_id;
     if (target === undefined) return;
     try {
-      await flush();
+      if (!(await leaveDetail())) return;
       if (moving.category_id !== target)
         await api("MoveTask", moving.id, target);
       const items = tasks.filter(
@@ -756,7 +836,14 @@ export default function App() {
             通知を一時停止
           </button>
           <hr />
-          <button onClick={() => void navigate(() => setPanel("categories"))}>
+          <button
+            onClick={() =>
+              void navigate(() => {
+                setCategoryFocus(undefined);
+                setPanel("categories");
+              })
+            }
+          >
             カテゴリ管理
           </button>
           <button onClick={() => void navigate(() => setPanel("series"))}>
@@ -1020,24 +1107,14 @@ export default function App() {
               )}
             </div>
           }
-          <div className="filters">
-            <button
-              className={view === "board" && category < 0 ? "active" : ""}
-              onClick={() => setTab("board")}
-              data-tip="全カテゴリのタスクを表示"
-            >
-              全て
-            </button>
-            {visibleCategories.map((c) => (
-              <button
-                key={c.id}
-                className={category === c.id ? "active" : ""}
-                onClick={() => setTab("board", c.id)}
-              >
-                {c.name}
-              </button>
-            ))}
-          </div>
+          <CategoryTabs
+            categories={visibleCategories}
+            selected={category}
+            all={view === "board" && category < 0}
+            onSelect={(id) => setTab("board", id)}
+            onManage={manageCategory}
+            onContextMenu={(id, e) => showContext(e, { categoryId: id })}
+          />
           <div className="task-filters" aria-label="タスクの絞り込み">
             <button
               aria-pressed={recurringOnly}
@@ -1138,7 +1215,25 @@ export default function App() {
           {!todayOnly && (view === "history" || view === "trash") && (
             <div className="section-head">
               <h2>{view === "history" ? "完了済み" : "ごみ箱"}</h2>
-              <button onClick={() => setTab("board")}>一覧に戻る</button>
+              <div className="section-actions">
+                <button
+                  className="bulk-action"
+                  disabled={
+                    bulkBusy ||
+                    !data.tasks.some((t) =>
+                      view === "trash"
+                        ? !!t.deleted_at
+                        : !t.deleted_at && t.status === "done",
+                    )
+                  }
+                  onClick={() => void bulkDelete(view === "trash")}
+                >
+                  {view === "trash"
+                    ? "ごみ箱を空にする"
+                    : "完了済みをすべてごみ箱へ"}
+                </button>
+                <button onClick={() => setTab("board")}>一覧に戻る</button>
+              </div>
             </div>
           )}
           <DndContext
@@ -1158,6 +1253,7 @@ export default function App() {
               return (
                 <Group
                   c={c}
+                  onContextMenu={(e) => showContext(e, { categoryId: c.id })}
                   collapsed={
                     selected?.category_id === c.id
                       ? false
@@ -1191,6 +1287,7 @@ export default function App() {
                       <Row
                         key={t.id}
                         t={t}
+                        onContextMenu={(e) => showContext(e, { task: t })}
                         u={urgency(t, data.settings)}
                         drag={drag}
                         open={() => void open(t)}
@@ -1238,6 +1335,7 @@ export default function App() {
         {panel === "categories" && (
           <CategoryManager
             data={data}
+            initialCategoryId={categoryFocus}
             onClose={() => setPanel("")}
             onSaved={() => reload()}
             onError={report}
@@ -1397,6 +1495,53 @@ export default function App() {
           onError={report}
         />
       )}
+      {context && (
+        <ContextMenu
+          key={`${context.x}:${context.y}:${context.task?.id ?? context.categoryId}`}
+          x={context.x}
+          y={context.y}
+          label={context.task ? "タスクの操作" : "カテゴリの操作"}
+          onClose={() => setContext(null)}
+          items={
+            context.task
+              ? [
+                  {
+                    label: "詳細を開く",
+                    action: () => void open(context.task!),
+                  },
+                  ...(context.task.deleted_at
+                    ? [
+                        {
+                          label: "ごみ箱から戻す",
+                          action: () => void state(context.task!, "restore"),
+                        },
+                      ]
+                    : [
+                        context.task.status === "pending"
+                          ? {
+                              label: "完了にする",
+                              action: () => void state(context.task!, "done"),
+                            }
+                          : {
+                              label: "未完了に戻す",
+                              action: () =>
+                                void state(context.task!, "pending"),
+                            },
+                        {
+                          label: "ごみ箱へ送る",
+                          action: () => void state(context.task!, "trash"),
+                        },
+                      ]),
+                ]
+              : [
+                  {
+                    label: "カテゴリ編集",
+                    action: () => manageCategory(context.categoryId!),
+                  },
+                ]
+          }
+        />
+      )}
       <UndoToast onError={report} />
       {settings && (
         <SettingsForm
@@ -1485,9 +1630,18 @@ export function Notifications() {
                       {t.deadline} · {urgencyLabel[urgency(t, data.settings)]}
                     </small>
                   </button>
-                  <button onClick={() => call("SetState", t.id, "done")}>
+                  <button
+                    className="summary-complete"
+                    onClick={() => call("SetState", t.id, "done")}
+                  >
                     完了
                   </button>
+                  {t.show_memo_in_notice && t.memo && (
+                    <MemoPreview
+                      value={t.memo}
+                      onError={(e) => setError(String(e))}
+                    />
+                  )}
                 </div>
               ))
             ) : (
@@ -1506,20 +1660,30 @@ export function Notifications() {
         </>
       ) : (
         <>
-          <button
-            className="notice-content"
-            data-tip="タスクを開いて、この通知を閉じる"
-            onClick={open}
-          >
-            <h2>
-              {data.settings.private
-                ? "タスクの通知"
-                : (task?.title ?? n.title)}
-            </h2>
-            {!data.settings.private && task?.deadline && (
-              <small>期限 {task.deadline}</small>
-            )}
-          </button>
+          <div className="notice-body">
+            <button
+              className="notice-content"
+              data-tip="タスクを開いて、この通知を閉じる"
+              onClick={open}
+            >
+              <h2>
+                {data.settings.private
+                  ? "タスクの通知"
+                  : (task?.title ?? n.title)}
+              </h2>
+              {!data.settings.private && task?.deadline && (
+                <small>期限 {task.deadline}</small>
+              )}
+            </button>
+            {!data.settings.private &&
+              task?.show_memo_in_notice &&
+              task.memo && (
+                <MemoPreview
+                  value={task.memo}
+                  onError={(e) => setError(String(e))}
+                />
+              )}
+          </div>
           <footer>
             {n.task_id > 0 && (
               <>

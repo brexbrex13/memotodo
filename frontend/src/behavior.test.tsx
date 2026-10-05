@@ -65,7 +65,7 @@ beforeEach(() => {
   vi.mocked(api).mockReset();
   vi.mocked(api).mockImplementation(async (method, ...args) => {
     if (method === "GetSnapshot") return snapshot;
-    if (method === "SaveTask") {
+    if (method === "SaveTask" || method === "SaveSuggestedTask") {
       const task = {
         ...(args[0] as object),
         id: (args[0] as { id: number }).id || 1,
@@ -84,12 +84,14 @@ describe("sticky board and notification semantics", () => {
     fireEvent.change(input, { target: { value: "ぱぱっと要件" } });
     fireEvent.keyDown(input, { key: "Enter", keyCode: 229, isComposing: true });
     expect(
-      vi.mocked(api).mock.calls.filter((c) => c[0] === "SaveTask"),
+      vi.mocked(api).mock.calls.filter((c) => c[0] === "SaveSuggestedTask"),
     ).toHaveLength(0);
     fireEvent.keyDown(input, { key: "Enter", keyCode: 13, isComposing: false });
     await waitFor(() =>
       expect(
-        vi.mocked(api).mock.calls.find((c) => c[0] === "SaveTask")?.[1],
+        vi
+          .mocked(api)
+          .mock.calls.find((c) => c[0] === "SaveSuggestedTask")?.[1],
       ).toMatchObject({ title: "ぱぱっと要件", deadline: "", reminder_at: "" }),
     );
   });
@@ -133,7 +135,7 @@ describe("sticky board and notification semantics", () => {
     await waitFor(() => expect(api).toHaveBeenCalledWith("Acknowledge", 7));
     expect(api).not.toHaveBeenCalledWith("SetState", 1, "done");
   });
-  it("flushes draft before closing and retains it after failure", async () => {
+  it("saves only explicitly and retains the draft after failure", async () => {
     const task = { ...emptyTask(1), id: 3, version: 1, title: "要件" };
     const close = vi.fn(),
       error = vi.fn();
@@ -152,11 +154,15 @@ describe("sticky board and notification semantics", () => {
       target: { value: "保存するメモ" },
     });
     vi.mocked(api).mockRejectedValueOnce(new Error("ディスクエラー"));
-    fireEvent.click(screen.getByLabelText("詳細を閉じる"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "今すぐ保存" }),
+    );
     await waitFor(() => expect(error).toHaveBeenCalled());
     expect(close).not.toHaveBeenCalled();
     expect(localStorage.getItem("draft:3")).toContain("保存するメモ");
-    fireEvent.click(screen.getByLabelText("詳細を閉じる"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "今すぐ保存" }),
+    );
     await waitFor(() => expect(close).toHaveBeenCalled());
     expect(localStorage.getItem("draft:3")).toBeNull();
   });
@@ -256,8 +262,8 @@ describe("smart add on the main board", () => {
     expect(within(chips).getByText("経理")).toBeTruthy();
     expect(calls("SuggestTask")[0].slice(1)).toEqual(["請求書を経理に", true]);
     fireEvent.keyDown(input, { key: "Enter", keyCode: 13 });
-    await waitFor(() => expect(calls("SaveTask")).toHaveLength(1));
-    expect(calls("SaveTask")[0][1]).toMatchObject({ category_id: 2 });
+    await waitFor(() => expect(calls("SaveSuggestedTask")).toHaveLength(1));
+    expect(calls("SaveSuggestedTask")[0][1]).toMatchObject({ category_id: 2 });
   });
   it("keeps the selected category tab and does not ask for a category", async () => {
     smartBoard({ category_id: 2, deadline: "today" });
@@ -277,8 +283,8 @@ describe("smart add on the main board", () => {
     expect(within(chips).queryByText("経理")).toBeNull();
     expect(calls("SuggestTask")[0].slice(1)).toEqual(["請求書を経理に", false]);
     fireEvent.keyDown(input, { key: "Enter", keyCode: 13 });
-    await waitFor(() => expect(calls("SaveTask")).toHaveLength(1));
-    expect(calls("SaveTask")[0][1]).toMatchObject({ category_id: 1 });
+    await waitFor(() => expect(calls("SaveSuggestedTask")).toHaveLength(1));
+    expect(calls("SaveSuggestedTask")[0][1]).toMatchObject({ category_id: 1 });
   });
   it("hides the important chip while filtering by important", async () => {
     smartBoard({ important: true, deadline: "today" });
@@ -297,7 +303,115 @@ describe("smart add on the main board", () => {
     );
     expect(within(chips).queryByText("重要")).toBeNull();
     fireEvent.keyDown(input, { key: "Enter", keyCode: 13 });
-    await waitFor(() => expect(calls("SaveTask")).toHaveLength(1));
-    expect(calls("SaveTask")[0][1]).toMatchObject({ important: true });
+    await waitFor(() => expect(calls("SaveSuggestedTask")).toHaveLength(1));
+    expect(calls("SaveSuggestedTask")[0][1]).toMatchObject({ important: true });
   });
+});
+
+describe("notification memo visibility", () => {
+  it.each(["reminder", "summary"])(
+    "shows opted-in memos for %s without acknowledging links, and hides them in private mode",
+    async (kind) => {
+      snapshot.tasks = [
+        {
+          ...emptyTask(1),
+          id: 1,
+          title: "メモ通知",
+          deadline: "2000-01-01",
+          memo: '<p>手順</p><a href="file:///C:/Work">作業場所</a>',
+          show_memo_in_notice: true,
+        },
+      ];
+      snapshot.notifications = [
+        {
+          id: 1,
+          key: "memo",
+          task_id: kind === "summary" ? 0 : 1,
+          kind,
+          title: "通知",
+          fired_at: "2000-01-01T09:00",
+          acknowledged: false,
+        },
+      ];
+      const view = render(<Notifications />);
+      const memo = await screen.findByLabelText("通知のメモ");
+      fireEvent.click(within(memo).getByRole("link", { name: "作業場所" }));
+      await waitFor(() =>
+        expect(api).toHaveBeenCalledWith("OpenURL", "file:///C:/Work"),
+      );
+      expect(api).not.toHaveBeenCalledWith("Acknowledge", 1);
+      expect(api).not.toHaveBeenCalledWith("OpenFromNotice", 1, 1);
+      view.unmount();
+      snapshot.settings = { ...defaults, private: true };
+      render(<Notifications />);
+      await screen.findByLabelText("通知を閉じる");
+      expect(screen.queryByLabelText("通知のメモ")).toBeNull();
+    },
+  );
+  it("defaults off and saves the per-task option with the memo", async () => {
+    const task = { ...emptyTask(1), id: 11, version: 1, title: "設定の保存" };
+    render(
+      <TaskDetail
+        task={task}
+        categories={[]}
+        onClose={vi.fn()}
+        onSaved={vi.fn()}
+        onError={vi.fn()}
+        handle={createRef<DraftHandle>()}
+      />,
+    );
+    expect(screen.getByLabelText("通知にメモを表示する")).toHaveProperty(
+      "checked",
+      false,
+    );
+    fireEvent.click(screen.getByLabelText("通知にメモを表示する"));
+    fireEvent.change(screen.getByLabelText("業務メモ"), {
+      target: { value: "作業場所" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "今すぐ保存" }),
+    );
+    await waitFor(() =>
+      expect(api).toHaveBeenCalledWith(
+        "SaveTask",
+        expect.objectContaining({
+          memo: "作業場所",
+          show_memo_in_notice: true,
+        }),
+      ),
+    );
+  });
+});
+
+it("keeps edits local until save and offers discard on navigation", async () => {
+  const task = { ...emptyTask(1), id: 31, version: 1, title: "正式保存の検証" };
+  const handle = createRef<DraftHandle>();
+  const close = vi.fn();
+  render(
+    <TaskDetail
+      task={task}
+      categories={[]}
+      onClose={close}
+      onSaved={vi.fn()}
+      onError={vi.fn()}
+      handle={handle}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText("期限日", { exact: true }), {
+    target: { value: "2000-01-01" },
+  });
+  fireEvent.change(screen.getByLabelText("業務メモ"), {
+    target: { value: "未確定" },
+  });
+  await new Promise((r) => setTimeout(r, 800));
+  expect(api).not.toHaveBeenCalledWith("SaveTask", expect.anything());
+  expect(localStorage.getItem("draft:31")).toContain("未確定");
+  fireEvent.click(screen.getByLabelText("詳細を閉じる"));
+  expect(screen.getByRole("dialog", { name: "未保存の変更" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "編集に戻る" }));
+  expect(close).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "変更を破棄" }));
+  expect(close).toHaveBeenCalled();
+  expect(localStorage.getItem("draft:31")).toBeNull();
+  expect(api).not.toHaveBeenCalledWith("SaveTask", expect.anything());
 });

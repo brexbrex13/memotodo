@@ -1,4 +1,5 @@
 import ReactDOM from "react-dom/client";
+import { ImageViewer } from "./ImageViewer";
 import App, { Notifications } from "./App";
 import "./styles/todo.css";
 import { Tooltip } from "./Tooltip";
@@ -9,7 +10,10 @@ applyTheme((localStorage.getItem("theme") as Theme) || "light");
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <>
     <Tooltip />
-    {new URLSearchParams(location.search).get("window") === "notifications" ? (
+    {new URLSearchParams(location.search).get("window") === "image-viewer" ? (
+      <ImageViewer />
+    ) : new URLSearchParams(location.search).get("window") ===
+      "notifications" ? (
       <Notifications />
     ) : new URLSearchParams(location.search).get("window") ===
       "quick-suggestions" ? (
