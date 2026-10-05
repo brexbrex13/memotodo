@@ -57,6 +57,9 @@ type App struct {
 	jevKeys              keyStore
 	newJev               func(ep jev.Endpoint, key string) (jevAPI, error)
 	jevMu                sync.Mutex
+	jevRevision          uint64
+	aiPending            map[string]pendingAI
+	aiSequence           uint64
 	jevBad               map[string]bool // providers whose saved key was rejected
 }
 
@@ -417,6 +420,18 @@ func (a *App) SaveSettings(v board.Settings) error {
 	}
 	if shortcutChanged {
 		a.shortcutError = ""
+	}
+	if v.SmartAdd != old.Settings.SmartAdd || v.JevEndpoint() != old.Settings.JevEndpoint() || v.AITimeoutSeconds != old.Settings.AITimeoutSeconds {
+		a.jevMu.Lock()
+		a.jevRevision++
+		for _, p := range a.aiPending {
+			p.cancel()
+		}
+		if a.jevBad != nil {
+			delete(a.jevBad, jev.KeySlot(v.JevEndpoint()))
+		}
+		a.jevMu.Unlock()
+		a.emitJev()
 	}
 	a.changed()
 	return nil

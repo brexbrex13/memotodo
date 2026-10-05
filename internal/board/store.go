@@ -484,10 +484,13 @@ func validateSettings(q queryer, v Settings) error {
 			return e
 		}
 	}
+	if v.AITimeoutSeconds < 0 || v.AITimeoutSeconds > 120 {
+		return errors.New("AIの待ち時間は0〜120秒で指定してください")
+	}
 	// Incomplete endpoint details are only rejected once smart add is on.
 	if e := jev.ValidateEndpoint(v.JevEndpoint()); e != nil {
 		switch v.JevProvider {
-		case "", "typesafe", "vercel", "cloudflare", "custom":
+		case "", "typesafe", "vercel", "cloudflare", "custom", "openai", "local":
 			if v.SmartAdd {
 				return e
 			}

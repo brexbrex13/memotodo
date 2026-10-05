@@ -74,6 +74,23 @@ export function useSmartAdd({
     commit(dropChip(optionsRef.current, autoRef.current, field));
   };
   useEffect(() => {
+    seq.current++;
+    lastAsked.current = "";
+    setInvalid(false);
+    setDuplicate(null);
+    if (Object.keys(autoRef.current).length) {
+      commit(
+        applySuggestion(
+          optionsRef.current,
+          touched.current,
+          autoRef.current,
+          null,
+          defaultTime,
+        ),
+      );
+    }
+  }, [scope, enabled]);
+  useEffect(() => {
     const title = text.trim();
     const key = scope + "\u0000" + title;
     if (!title) {
@@ -126,7 +143,10 @@ export function useSmartAdd({
           if (n === seq.current) lastAsked.current = "";
         });
     }, 400);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      seq.current++;
+    };
   }, [text, enabled, invalid, composeTick, scope]);
   return {
     chips: chipLabels(auto, options, categories).filter(

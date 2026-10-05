@@ -87,6 +87,7 @@ export type Settings = {
   collapsed: number[];
   monitor: string;
   smart_add?: boolean;
+  ai_timeout_seconds?: number;
   jev_provider?: string;
   jev_cloudflare_account?: string;
   jev_custom_url?: string;

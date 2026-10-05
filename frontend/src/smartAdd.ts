@@ -9,6 +9,8 @@ export type Suggestion = {
   invalid: boolean;
 };
 export type JevStatus = {
+  revision?: number;
+  key_configured?: boolean;
   supported: boolean;
   configured: boolean;
   hint: string;
@@ -171,12 +173,25 @@ export function chipLabels(
   return out;
 }
 export type JevEndpoint = {
+  timeout_seconds?: number;
   provider: string;
   account: string;
   base_url: string;
   model: string;
 };
 export const jevProviders = [
+  {
+    id: "openai",
+    name: "OpenAI互換API（Geminiなど）",
+    key: "APIキー",
+    sendTo: "指定したAIサービス",
+  },
+  {
+    id: "local",
+    name: "ローカルAI（LM Studio・Ollamaなど）",
+    key: "APIキー（認証ありの場合のみ）",
+    sendTo: "このPCのローカルAI",
+  },
   {
     id: "typesafe",
     name: "TypeSafe",
@@ -203,4 +218,12 @@ export const jevProviders = [
   },
 ];
 export const jevProvider = (id: string) =>
-  jevProviders.find((p) => p.id === (id || "typesafe")) ?? jevProviders[0];
+  jevProviders.find((p) => p.id === (id || "typesafe")) ??
+  jevProviders.find((p) => p.id === "typesafe")!;
+
+export const aiKeySlot = (endpoint: JevEndpoint) => {
+  const p = jevProvider(endpoint.provider).id;
+  return p === "openai" || p === "local"
+    ? p + "@" + endpoint.base_url.trim().replace(/\/+$/, "")
+    : p;
+};

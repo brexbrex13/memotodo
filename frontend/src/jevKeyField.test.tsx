@@ -66,7 +66,7 @@ it("saves a key for the selected provider without keeping it in the field", asyn
   await screen.findByText("キーが無効です");
   expect(
     vi.mocked(api).mock.calls.find((c) => c[0] === "TestJevKey")?.[1],
-  ).toEqual(endpoint());
+  ).toMatchObject(endpoint());
   fireEvent.click(screen.getByText("削除"));
   await waitFor(() => expect(field.placeholder).toBe("未設定"));
   expect(keys).toEqual({});
@@ -92,7 +92,7 @@ it("switches the key label, status and destination with the provider", async () 
   await screen.findByText("キーが無効です");
   expect(
     vi.mocked(api).mock.calls.find((c) => c[0] === "TestJevKey")?.[1],
-  ).toEqual(cf);
+  ).toMatchObject(cf);
 });
 it("shows save errors and the unsupported state", async () => {
   vi.mocked(api).mockImplementation(async (method) => {
@@ -142,7 +142,7 @@ it("asks for provider details in settings and saves them", async () => {
       onError={() => {}}
     />,
   );
-  const provider = await screen.findByLabelText("Jevのプロバイダー");
+  const provider = await screen.findByLabelText("AIの接続方式");
   expect(screen.queryByLabelText("CloudflareのアカウントID")).toBeNull();
   fireEvent.change(provider, { target: { value: "custom" } });
   expect(screen.getByLabelText("ベースURL")).toBeTruthy();
@@ -161,5 +161,35 @@ it("asks for provider details in settings and saves them", async () => {
       jev_provider: "cloudflare",
       jev_cloudflare_account: "0123456789abcdef0123456789abcdef",
     }),
+  );
+});
+it("does not label a keyless local connection as a saved API key", async () => {
+  vi.mocked(api).mockImplementation(async (method) =>
+    method === "GetJevStatus"
+      ? {
+          supported: true,
+          configured: true,
+          key_configured: false,
+          hint: "",
+          invalid: false,
+        }
+      : undefined,
+  );
+  render(
+    <JevKeyField
+      endpoint={endpoint({
+        provider: "local",
+        base_url: "http://localhost:1234/v1",
+        model: "m",
+      })}
+    />,
+  );
+  const field = (await screen.findByLabelText(
+    "APIキー（認証ありの場合のみ）",
+  )) as HTMLInputElement;
+  await waitFor(() => expect(field.placeholder).toBe("未設定"));
+  expect((screen.getByText("削除") as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByText("接続テスト") as HTMLButtonElement).disabled).toBe(
+    false,
   );
 });

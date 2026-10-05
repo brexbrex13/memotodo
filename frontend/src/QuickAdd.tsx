@@ -47,6 +47,13 @@ export function QuickAdd() {
     categories: snapshot?.categories ?? [],
     ask: (title) =>
       api<Suggestion>("SuggestQuickAdd", title, generationRef.current),
+    scope: JSON.stringify([
+      snapshot?.settings.jev_provider,
+      snapshot?.settings.jev_custom_url,
+      snapshot?.settings.jev_custom_model,
+      snapshot?.settings.ai_timeout_seconds,
+      jevStatus?.revision,
+    ]),
     session: () => `${operation.current}:${generationRef.current}`,
   });
   const rows =

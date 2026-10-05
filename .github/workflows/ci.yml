@@ -24,6 +24,7 @@ jobs:
       - run: npm ci --prefix frontend
       - run: npm test --prefix frontend
       - run: npm run build --prefix frontend
+      - run: CGO_ENABLED=0 go test -tags server ./...
       - run: go test -race ./internal/board
       - run: CGO_ENABLED=0 go vet -tags server ./...
       - run: CGO_ENABLED=0 go build -tags server -o /tmp/memotodo-server .

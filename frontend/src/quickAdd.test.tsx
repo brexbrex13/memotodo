@@ -246,7 +246,7 @@ it("shows an invalid-key notice once and stops asking", async () => {
   const input = screen.getByLabelText("トレイからタスク追加");
   await act(async () => {});
   fireEvent.change(input, { target: { value: "一つ目" } });
-  await waitFor(() => screen.getByText("Jevのキーが無効です（設定で確認）"), {
+  await waitFor(() => screen.getByText("AIのキーが無効です（設定で確認）"), {
     timeout: 1500,
   });
   fireEvent.change(input, { target: { value: "二つ目" } });
