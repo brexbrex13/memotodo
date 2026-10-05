@@ -78,7 +78,7 @@ export function ContextMenu({
       className="category-context"
       role="menu"
       aria-label={label}
-      style={position}
+      style={{ ...position, width: "max-content", maxWidth: "calc(100vw - 16px)" }}
       onContextMenu={(e) => e.preventDefault()}
     >
       {items.map((item) => (
