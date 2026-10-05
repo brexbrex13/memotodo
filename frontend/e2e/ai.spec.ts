@@ -50,7 +50,7 @@ test("local AI without credentials, settings placement and suggestion", async ({
       .getByLabel("ベースURL")
       .fill(`http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`);
     await page.getByLabel("モデル名").fill("test-local");
-    await page.getByRole("button", { name: "接続テスト", exact: true }).click();
+    await page.getByRole("button", { name: "接続確認", exact: true }).click();
     await expect(page.locator(".jev-key [role=status]")).toContainText(
       "接続できました",
     );

@@ -153,7 +153,7 @@ func TestSuggestQuickAddHalvesTasksOnceWhenTooLarge(t *testing.T) {
 	}
 	f.sent, f.errs = nil, []error{jev.ErrTooLarge, jev.ErrTooLarge}
 	s, e = a.SuggestQuickAdd("y", 0)
-	if e != nil || s != (smartadd.Suggestion{}) || len(f.sent) != 2 {
+	if e != nil || !s.Unavailable || len(f.sent) != 2 {
 		t.Fatalf("%+v %v %v", s, e, f.sent)
 	}
 }
@@ -161,8 +161,36 @@ func TestSuggestQuickAddHalvesTasksOnceWhenTooLarge(t *testing.T) {
 func TestSuggestQuickAddSwallowsTransientErrors(t *testing.T) {
 	a, f := smartApp(t, true, "k")
 	f.errs = []error{errors.New("network down")}
-	if s, e := a.SuggestQuickAdd("x", 0); e != nil || s != (smartadd.Suggestion{}) {
+	if s, e := a.SuggestQuickAdd("x", 0); e != nil || !s.Unavailable {
 		t.Fatalf("%+v %v", s, e)
+	}
+}
+
+func TestFailureStopsNetworkAndConnectionCheckResumes(t *testing.T) {
+	a, f := smartApp(t, true, "key")
+	if _, e := a.store.SaveTask(board.Task{Title: "既存の用事"}); e != nil {
+		t.Fatal(e)
+	}
+	f.errs = []error{errors.New("network down")}
+	s, e := a.SuggestTask("既存の用事", true)
+	if e != nil || !s.Unavailable || s.Duplicate == nil {
+		t.Fatal(s, e)
+	}
+	for _, title := range []string{"別の用事", "既存の用事"} {
+		s, e = a.SuggestTask(title, true)
+		if e != nil || !s.Unavailable || len(f.sent) != 1 {
+			t.Fatal(s, e, f.sent)
+		}
+	}
+	if result, e := a.TestJevKey(jev.Endpoint{}); e != nil || result != "ok" {
+		t.Fatal(result, e)
+	}
+	if a.GetJevStatus("").Unavailable {
+		t.Fatal("connection check did not resume AI")
+	}
+	s, e = a.SuggestTask("別の用事", true)
+	if e != nil || !s.Important || len(f.sent) != 2 {
+		t.Fatal(s, e, f.sent)
 	}
 }
 
@@ -290,7 +318,7 @@ func TestQuickAddHeight(t *testing.T) {
 		options bool
 		rows    int
 		want    int
-	}{{false, 0, 105}, {false, 1, 131}, {false, 3, 183}, {false, 9, 183}, {false, -1, 105}, {true, 2, 430}} {
+	}{{false, 0, 105}, {false, 1, 131}, {false, 3, 183}, {false, 9, 339}, {false, -1, 105}, {true, 2, 482}} {
 		if got := quickAddHeight(tc.options, tc.rows); got != tc.want {
 			t.Fatal(tc, got)
 		}

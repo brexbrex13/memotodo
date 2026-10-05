@@ -57,7 +57,7 @@ it("ignores an old cancel event and old save completion after a newer input sess
   let finishSave!: (value: unknown) => void;
   const original = vi.mocked(api).getMockImplementation()!;
   vi.mocked(api).mockImplementation((method, ...args) =>
-    method === "SaveTask"
+    method === "SaveSuggestedTask"
       ? new Promise((resolve) => {
           finishSave = resolve;
         })
@@ -152,8 +152,8 @@ it("asks Jev 0.4s after typing stops and shows chips and a duplicate warning", a
     ]),
   );
   fireEvent.keyDown(input, { key: "Enter", keyCode: 13 });
-  await waitFor(() => expect(calls("SaveTask")).toHaveLength(1));
-  expect(calls("SaveTask")[0][1]).toMatchObject({
+  await waitFor(() => expect(calls("SaveSuggestedTask")).toHaveLength(1));
+  expect(calls("SaveSuggestedTask")[0][1]).toMatchObject({
     title: "請求書を経理に",
     category_id: 2,
     important: true,
@@ -186,8 +186,8 @@ it("ignores stale answers and does not wait for Jev on Enter", async () => {
   await act(async () => pending[0](result({ important: true })));
   expect(screen.queryByLabelText("推定した初期値")).toBeNull();
   fireEvent.keyDown(input, { key: "Enter", keyCode: 13 });
-  await waitFor(() => expect(calls("SaveTask")).toHaveLength(1));
-  expect(calls("SaveTask")[0][1]).toMatchObject({
+  await waitFor(() => expect(calls("SaveSuggestedTask")).toHaveLength(1));
+  expect(calls("SaveSuggestedTask")[0][1]).toMatchObject({
     title: "二つ目",
     important: false,
   });
@@ -237,8 +237,8 @@ it("saves into the default category when the suggested one was deleted meanwhile
   );
   await act(async () => listeners.get("board:changed")?.(undefined));
   fireEvent.keyDown(input, { key: "Enter", keyCode: 13 });
-  await waitFor(() => expect(calls("SaveTask")).toHaveLength(1));
-  expect(calls("SaveTask")[0][1]).toMatchObject({ category_id: 0 });
+  await waitFor(() => expect(calls("SaveSuggestedTask")).toHaveLength(1));
+  expect(calls("SaveSuggestedTask")[0][1]).toMatchObject({ category_id: 0 });
 });
 it("shows an invalid-key notice once and stops asking", async () => {
   smartMock(() => result({ invalid: true }));
@@ -288,8 +288,8 @@ it("drops an answer for a title that was cleared or replaced before it arrived",
   fireEvent.change(input, { target: { value: "別の用事2" } });
   await act(async () => pending[1](result({ important: true })));
   fireEvent.keyDown(input, { key: "Enter", keyCode: 13 });
-  await waitFor(() => expect(calls("SaveTask")).toHaveLength(1));
-  expect(calls("SaveTask")[0][1]).toMatchObject({
+  await waitFor(() => expect(calls("SaveSuggestedTask")).toHaveLength(1));
+  expect(calls("SaveSuggestedTask")[0][1]).toMatchObject({
     title: "別の用事2",
     important: false,
   });
@@ -311,8 +311,8 @@ it("keeps a deadline reminder time the user changed", async () => {
   });
   await act(async () => {});
   fireEvent.keyDown(input, { key: "Enter", keyCode: 13 });
-  await waitFor(() => expect(calls("SaveTask")).toHaveLength(1));
-  expect(calls("SaveTask")[0][1]).toMatchObject({
+  await waitFor(() => expect(calls("SaveSuggestedTask")).toHaveLength(1));
+  expect(calls("SaveSuggestedTask")[0][1]).toMatchObject({
     reminder_mode: "deadline",
     reminder_time: "18:00",
   });

@@ -34,6 +34,7 @@ import { TaskDetail, DraftHandle } from "./TaskDetail";
 import { SeriesForm } from "./SeriesForm";
 import { SettingsForm } from "./SettingsForm";
 import { CategoryManager } from "./CategoryManager";
+import { CategoryTabs } from "./CategoryTabs";
 import { NotificationPause } from "./NotificationPause";
 import { ReminderFields } from "./ReminderFields";
 import { useSuggestions } from "./Suggestions";
@@ -243,6 +244,10 @@ export default function App() {
     [menu, setMenu] = useState(false),
     [deadline, setDeadline] = useState(""),
     [search, setSearch] = useState(false);
+  const [categoryFocus, setCategoryFocus] = useState<number | undefined>(
+    undefined,
+  );
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [temporaryCollapsed, setTemporaryCollapsed] = useState<
     Record<number, boolean>
   >({});
@@ -289,6 +294,7 @@ export default function App() {
       !recurringOnly,
     defaultTime: data?.settings.reminder_default_time || "09:00",
     categories: data?.categories ?? [],
+    existingTasks: data?.tasks ?? [],
     ask: (title) => api<Suggestion>("SuggestTask", title, category <= 0),
     scope: JSON.stringify([
       category,
@@ -525,18 +531,23 @@ export default function App() {
     const target =
       category > 0
         ? category
-        : categories.some((c) => c.id === quickOptions.category_id)
-          ? quickOptions.category_id
+        : categories.some((c) => c.id === smart.currentOptions().category_id)
+          ? smart.currentOptions().category_id
           : categories[0]?.id || 0;
     try {
-      await api("SaveTask", {
-        ...emptyTask(target),
-        title: quick,
-        ...quickOptions,
-        category_id: target,
-        important: important || quickOptions.important,
-        today_date: todayOnly ? date() : "",
-      });
+      const currentOptions = smart.currentOptions();
+      await api(
+        "SaveSuggestedTask",
+        {
+          ...emptyTask(target),
+          title: quick,
+          ...currentOptions,
+          category_id: target,
+          important: important || currentOptions.important,
+          today_date: todayOnly ? date() : "",
+        },
+        category <= 0 && smart.isAutomatic("category"),
+      );
       setQuick("");
       setQuickOptions(blankOptions());
       smart.reset();
@@ -565,6 +576,39 @@ export default function App() {
       await reload();
     } catch (e) {
       report(e);
+    }
+  };
+  const bulkDelete = async (permanent: boolean) => {
+    if (bulkBusy) return;
+    setBulkBusy(true);
+    try {
+      await flush();
+      const latest = await api<Snapshot>("GetSnapshot");
+      const count = latest.tasks.filter((t) =>
+        permanent ? !!t.deleted_at : !t.deleted_at && t.status === "done",
+      ).length;
+      if (
+        !count ||
+        !confirm(
+          permanent
+            ? `ごみ箱の${count}件を完全削除しますか？タスクと不要になった内部画像は元に戻せません。`
+            : `完了済みの${count}件をすべてごみ箱へ移動しますか？検索・絞り込みに関係なく全件が対象です。`,
+        )
+      )
+        return;
+      await api(permanent ? "EmptyTrash" : "TrashCompleted");
+      if (
+        selected &&
+        (permanent ? !!selected.deleted_at : selected.status === "done")
+      ) {
+        localStorage.removeItem("draft:" + selected.id);
+        setSelected(null);
+      }
+    } catch (e) {
+      report(e);
+    } finally {
+      await reload();
+      setBulkBusy(false);
     }
   };
   if (!data)
@@ -756,7 +800,14 @@ export default function App() {
             通知を一時停止
           </button>
           <hr />
-          <button onClick={() => void navigate(() => setPanel("categories"))}>
+          <button
+            onClick={() =>
+              void navigate(() => {
+                setCategoryFocus(undefined);
+                setPanel("categories");
+              })
+            }
+          >
             カテゴリ管理
           </button>
           <button onClick={() => void navigate(() => setPanel("series"))}>
@@ -1020,24 +1071,18 @@ export default function App() {
               )}
             </div>
           }
-          <div className="filters">
-            <button
-              className={view === "board" && category < 0 ? "active" : ""}
-              onClick={() => setTab("board")}
-              data-tip="全カテゴリのタスクを表示"
-            >
-              全て
-            </button>
-            {visibleCategories.map((c) => (
-              <button
-                key={c.id}
-                className={category === c.id ? "active" : ""}
-                onClick={() => setTab("board", c.id)}
-              >
-                {c.name}
-              </button>
-            ))}
-          </div>
+          <CategoryTabs
+            categories={visibleCategories}
+            selected={category}
+            all={view === "board" && category < 0}
+            onSelect={(id) => setTab("board", id)}
+            onManage={(id) =>
+              void navigate(() => {
+                setCategoryFocus(id);
+                setPanel("categories");
+              })
+            }
+          />
           <div className="task-filters" aria-label="タスクの絞り込み">
             <button
               aria-pressed={recurringOnly}
@@ -1138,7 +1183,25 @@ export default function App() {
           {!todayOnly && (view === "history" || view === "trash") && (
             <div className="section-head">
               <h2>{view === "history" ? "完了済み" : "ごみ箱"}</h2>
-              <button onClick={() => setTab("board")}>一覧に戻る</button>
+              <div className="section-actions">
+                <button
+                  className="bulk-action"
+                  disabled={
+                    bulkBusy ||
+                    !data.tasks.some((t) =>
+                      view === "trash"
+                        ? !!t.deleted_at
+                        : !t.deleted_at && t.status === "done",
+                    )
+                  }
+                  onClick={() => void bulkDelete(view === "trash")}
+                >
+                  {view === "trash"
+                    ? "ごみ箱を空にする"
+                    : "完了済みをすべてごみ箱へ"}
+                </button>
+                <button onClick={() => setTab("board")}>一覧に戻る</button>
+              </div>
             </div>
           )}
           <DndContext
@@ -1238,6 +1301,7 @@ export default function App() {
         {panel === "categories" && (
           <CategoryManager
             data={data}
+            initialCategoryId={categoryFocus}
             onClose={() => setPanel("")}
             onSaved={() => reload()}
             onError={report}

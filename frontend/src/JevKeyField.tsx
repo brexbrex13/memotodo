@@ -94,11 +94,16 @@ function JevKeyEditor({ endpoint }: { endpoint: JevEndpoint }) {
             )
           }
         >
-          接続テスト
+          接続確認
         </button>
       </div>
       {status?.invalid && (
         <p className="danger">キーが無効です。保存し直してください。</p>
+      )}
+      {status?.unavailable && !status.invalid && (
+        <p role="status">
+          AIとの接続を停止しています。接続確認に成功すると再開します。
+        </p>
       )}
       {message && <p role="status">{message}</p>}
       <p className="jev-note">

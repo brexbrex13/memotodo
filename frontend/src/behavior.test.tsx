@@ -65,7 +65,7 @@ beforeEach(() => {
   vi.mocked(api).mockReset();
   vi.mocked(api).mockImplementation(async (method, ...args) => {
     if (method === "GetSnapshot") return snapshot;
-    if (method === "SaveTask") {
+    if (method === "SaveTask" || method === "SaveSuggestedTask") {
       const task = {
         ...(args[0] as object),
         id: (args[0] as { id: number }).id || 1,
@@ -84,12 +84,12 @@ describe("sticky board and notification semantics", () => {
     fireEvent.change(input, { target: { value: "ぱぱっと要件" } });
     fireEvent.keyDown(input, { key: "Enter", keyCode: 229, isComposing: true });
     expect(
-      vi.mocked(api).mock.calls.filter((c) => c[0] === "SaveTask"),
+      vi.mocked(api).mock.calls.filter((c) => c[0] === "SaveSuggestedTask"),
     ).toHaveLength(0);
     fireEvent.keyDown(input, { key: "Enter", keyCode: 13, isComposing: false });
     await waitFor(() =>
       expect(
-        vi.mocked(api).mock.calls.find((c) => c[0] === "SaveTask")?.[1],
+        vi.mocked(api).mock.calls.find((c) => c[0] === "SaveSuggestedTask")?.[1],
       ).toMatchObject({ title: "ぱぱっと要件", deadline: "", reminder_at: "" }),
     );
   });
@@ -256,8 +256,8 @@ describe("smart add on the main board", () => {
     expect(within(chips).getByText("経理")).toBeTruthy();
     expect(calls("SuggestTask")[0].slice(1)).toEqual(["請求書を経理に", true]);
     fireEvent.keyDown(input, { key: "Enter", keyCode: 13 });
-    await waitFor(() => expect(calls("SaveTask")).toHaveLength(1));
-    expect(calls("SaveTask")[0][1]).toMatchObject({ category_id: 2 });
+    await waitFor(() => expect(calls("SaveSuggestedTask")).toHaveLength(1));
+    expect(calls("SaveSuggestedTask")[0][1]).toMatchObject({ category_id: 2 });
   });
   it("keeps the selected category tab and does not ask for a category", async () => {
     smartBoard({ category_id: 2, deadline: "today" });
@@ -277,8 +277,8 @@ describe("smart add on the main board", () => {
     expect(within(chips).queryByText("経理")).toBeNull();
     expect(calls("SuggestTask")[0].slice(1)).toEqual(["請求書を経理に", false]);
     fireEvent.keyDown(input, { key: "Enter", keyCode: 13 });
-    await waitFor(() => expect(calls("SaveTask")).toHaveLength(1));
-    expect(calls("SaveTask")[0][1]).toMatchObject({ category_id: 1 });
+    await waitFor(() => expect(calls("SaveSuggestedTask")).toHaveLength(1));
+    expect(calls("SaveSuggestedTask")[0][1]).toMatchObject({ category_id: 1 });
   });
   it("hides the important chip while filtering by important", async () => {
     smartBoard({ important: true, deadline: "today" });
@@ -297,7 +297,7 @@ describe("smart add on the main board", () => {
     );
     expect(within(chips).queryByText("重要")).toBeNull();
     fireEvent.keyDown(input, { key: "Enter", keyCode: 13 });
-    await waitFor(() => expect(calls("SaveTask")).toHaveLength(1));
-    expect(calls("SaveTask")[0][1]).toMatchObject({ important: true });
+    await waitFor(() => expect(calls("SaveSuggestedTask")).toHaveLength(1));
+    expect(calls("SaveSuggestedTask")[0][1]).toMatchObject({ important: true });
   });
 });

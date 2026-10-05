@@ -7,8 +7,10 @@ export type Suggestion = {
   reminder: string;
   duplicate: { task_id: number; title: string } | null;
   invalid: boolean;
+  unavailable?: boolean;
 };
 export type JevStatus = {
+  unavailable?: boolean;
   revision?: number;
   key_configured?: boolean;
   supported: boolean;

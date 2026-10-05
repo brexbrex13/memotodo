@@ -27,12 +27,13 @@ type Dup struct {
 }
 
 type Suggestion struct {
-	CategoryID int64  `json:"category_id"`
-	Important  bool   `json:"important"`
-	Deadline   string `json:"deadline"`
-	Reminder   string `json:"reminder"`
-	Duplicate  *Dup   `json:"duplicate"`
-	Invalid    bool   `json:"invalid"`
+	CategoryID  int64  `json:"category_id"`
+	Important   bool   `json:"important"`
+	Deadline    string `json:"deadline"`
+	Reminder    string `json:"reminder"`
+	Duplicate   *Dup   `json:"duplicate"`
+	Invalid     bool   `json:"invalid"`
+	Unavailable bool   `json:"unavailable"`
 }
 
 type State struct {
