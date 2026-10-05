@@ -34,7 +34,6 @@ export function Editor({
     ),
   );
 
-  const [zoom, setZoom] = useState("");
   const upload = async (blob: Blob) => {
     uploads.current++;
     onBusy?.(true);
@@ -142,7 +141,9 @@ export function Editor({
       handleClick: (_view, _pos, e) => {
         const el = e.target as HTMLElement;
         if (el.tagName === "IMG") {
-          setZoom(el.getAttribute("src") ?? "");
+          void api("OpenImageViewer", el.getAttribute("src") ?? "").catch(
+            onError,
+          );
           return true;
         }
         const a = el.closest("a");
@@ -303,12 +304,6 @@ export function Editor({
       <div className="memo-editor" ref={resize} style={{ height }}>
         <EditorContent editor={editor} />
       </div>
-      {zoom && (
-        <div className="lightbox" onClick={() => setZoom("")}>
-          <button>閉じる</button>
-          <img src={zoom} alt="添付画像の拡大" />
-        </div>
-      )}
     </div>
   );
 }

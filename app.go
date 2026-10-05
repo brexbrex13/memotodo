@@ -24,6 +24,8 @@ import (
 )
 
 type App struct {
+	imageViewer          *application.WebviewWindow
+	imageViewerMu        sync.Mutex
 	shortcut             *shortcutManager
 	settingsMu           sync.Mutex
 	shortcutError        string

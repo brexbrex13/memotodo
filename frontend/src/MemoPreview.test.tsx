@@ -26,10 +26,8 @@ it("opens file links through the app and images separately without changing the 
   fireEvent.keyDown(screen.getByRole("button", { name: "添付画像を拡大" }), {
     key: "Enter",
   });
-  expect(screen.getByRole("dialog", { name: "添付画像の拡大" })).toBeTruthy();
-  fireEvent.keyDown(document, { key: "Escape" });
-  expect(screen.queryByRole("dialog")).toBeNull();
-  expect(api).toHaveBeenCalledTimes(1);
+  expect(api).toHaveBeenCalledWith("OpenImageViewer", "/images/test.png");
+  expect(api).toHaveBeenCalledTimes(2);
 });
 
 it("removes executable HTML and prevents editable or form controls in the preview", () => {

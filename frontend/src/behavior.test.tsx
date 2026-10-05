@@ -135,7 +135,7 @@ describe("sticky board and notification semantics", () => {
     await waitFor(() => expect(api).toHaveBeenCalledWith("Acknowledge", 7));
     expect(api).not.toHaveBeenCalledWith("SetState", 1, "done");
   });
-  it("flushes draft before closing and retains it after failure", async () => {
+  it("saves only explicitly and retains the draft after failure", async () => {
     const task = { ...emptyTask(1), id: 3, version: 1, title: "要件" };
     const close = vi.fn(),
       error = vi.fn();
@@ -154,11 +154,15 @@ describe("sticky board and notification semantics", () => {
       target: { value: "保存するメモ" },
     });
     vi.mocked(api).mockRejectedValueOnce(new Error("ディスクエラー"));
-    fireEvent.click(screen.getByLabelText("詳細を閉じる"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "今すぐ保存" }),
+    );
     await waitFor(() => expect(error).toHaveBeenCalled());
     expect(close).not.toHaveBeenCalled();
     expect(localStorage.getItem("draft:3")).toContain("保存するメモ");
-    fireEvent.click(screen.getByLabelText("詳細を閉じる"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "今すぐ保存" }),
+    );
     await waitFor(() => expect(close).toHaveBeenCalled());
     expect(localStorage.getItem("draft:3")).toBeNull();
   });
@@ -364,7 +368,9 @@ describe("notification memo visibility", () => {
     fireEvent.change(screen.getByLabelText("業務メモ"), {
       target: { value: "作業場所" },
     });
-    fireEvent.click(screen.getByLabelText("詳細を閉じる"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "今すぐ保存" }),
+    );
     await waitFor(() =>
       expect(api).toHaveBeenCalledWith(
         "SaveTask",
@@ -375,4 +381,37 @@ describe("notification memo visibility", () => {
       ),
     );
   });
+});
+
+it("keeps edits local until save and offers discard on navigation", async () => {
+  const task = { ...emptyTask(1), id: 31, version: 1, title: "正式保存の検証" };
+  const handle = createRef<DraftHandle>();
+  const close = vi.fn();
+  render(
+    <TaskDetail
+      task={task}
+      categories={[]}
+      onClose={close}
+      onSaved={vi.fn()}
+      onError={vi.fn()}
+      handle={handle}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText("期限日", { exact: true }), {
+    target: { value: "2000-01-01" },
+  });
+  fireEvent.change(screen.getByLabelText("業務メモ"), {
+    target: { value: "未確定" },
+  });
+  await new Promise((r) => setTimeout(r, 800));
+  expect(api).not.toHaveBeenCalledWith("SaveTask", expect.anything());
+  expect(localStorage.getItem("draft:31")).toContain("未確定");
+  fireEvent.click(screen.getByLabelText("詳細を閉じる"));
+  expect(screen.getByRole("dialog", { name: "未保存の変更" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "編集に戻る" }));
+  expect(close).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "変更を破棄" }));
+  expect(close).toHaveBeenCalled();
+  expect(localStorage.getItem("draft:31")).toBeNull();
+  expect(api).not.toHaveBeenCalledWith("SaveTask", expect.anything());
 });

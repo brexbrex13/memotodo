@@ -300,6 +300,62 @@ func clickAcknowledge(a *App) error {
 	}
 	return fmt.Errorf("notification acknowledgement did not respond to physical mouse click")
 }
+func checkImageViewer(a *App) error {
+	src, err := a.SaveImage("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aCfkAAAAASUVORK5CYII=")
+	if err != nil {
+		return err
+	}
+	if err = a.OpenImageViewer(src); err != nil {
+		return err
+	}
+	defer a.CloseImageViewer()
+	until := time.Now().Add(10 * time.Second)
+	loaded := false
+	for time.Now().Before(until) {
+		a.imageViewer.ExecJS(`(()=>{const img=document.querySelector('.image-viewer img');fetch('/wails/runtime?object=0&method=0&args='+encodeURIComponent(JSON.stringify({'call-id':'image-viewer-probe',methodName:'main.App.SmokeTarget',args:[img?.complete&&img.naturalWidth>0?1:0,innerWidth]})))})()`)
+		select {
+		case p := <-smokePoint:
+			if p[0] == 1 && p[1] >= 360 {
+				loaded = true
+			}
+		case <-time.After(time.Until(until)):
+			return fmt.Errorf("image viewer renderer timed out")
+		}
+		if loaded {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !loaded {
+		return fmt.Errorf("image viewer did not load the saved image")
+	}
+	hwnd := uintptr(a.imageViewer.NativeWindow())
+	visible, _, _ := user32.NewProc("IsWindowVisible").Call(hwnd)
+	if visible == 0 {
+		return fmt.Errorf("image viewer remained hidden")
+	}
+	a.imageViewer.ExecJS(`document.querySelector('button[aria-label="画像ビューアを閉じる"]')?.click()`)
+	until = time.Now().Add(5 * time.Second)
+	for time.Now().Before(until) {
+		visible, _, _ = user32.NewProc("IsWindowVisible").Call(hwnd)
+		if visible == 0 {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if visible != 0 {
+		return fmt.Errorf("image viewer close button did not hide window")
+	}
+	if err = a.OpenImageViewer(src); err != nil {
+		return err
+	}
+	visible, _, _ = user32.NewProc("IsWindowVisible").Call(hwnd)
+	if visible == 0 {
+		return fmt.Errorf("image viewer could not reopen")
+	}
+	return nil
+}
+
 func startNativeVerification(a *App) {
 	go func() {
 		result := map[string]any{"passed": false}
@@ -336,6 +392,11 @@ func startNativeVerification(a *App) {
 			return
 		}
 		result["right-edge-resize-with-scrollbar"] = true
+		if e := checkImageViewer(a); e != nil {
+			finish(e)
+			return
+		}
+		result["image-viewer-load-close-reopen"] = true
 		a.main.Hide()
 		exe, _ := os.Executable()
 		probe := exec.Command(exe, "--focus-probe")

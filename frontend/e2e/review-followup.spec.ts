@@ -344,7 +344,7 @@ test("notification memo is opt-in, images expand without acknowledging, and priv
   const detail = page.getByLabel("タスクの詳細", { exact: true });
   await expect(detail.getByLabel("通知にメモを表示する")).not.toBeChecked();
   await detail.getByLabel("通知にメモを表示する").check();
-  await detail.getByLabel("詳細を閉じる").click();
+  await detail.getByRole("button", { name: "今すぐ保存", exact: true }).click();
   await expect(notice.getByLabel("通知のメモ")).toBeVisible();
   await expect(notice.getByRole("link", { name: "作業場所" })).toHaveAttribute(
     "href",
@@ -362,10 +362,12 @@ test("notification memo is opt-in, images expand without acknowledging, and priv
     )
     .toBe(true);
   await img.click();
-  await expect(
-    notice.getByRole("dialog", { name: "添付画像の拡大" }),
-  ).toBeVisible();
-  await notice.getByLabel("画像の拡大を閉じる").click();
+  const viewer = await context.newPage();
+  await viewer.setViewportSize({ width: 900, height: 650 });
+  await viewer.goto("/?window=image-viewer&src=" + encodeURIComponent(image));
+  await expect(viewer.getByAltText("メモの添付画像")).toBeVisible();
+  await viewer.getByLabel("画像ビューアを閉じる").click();
+  await viewer.close();
   expect(
     (await service(page, "GetSnapshot")).notifications.find(
       (x: any) => x.id === n.id,
@@ -402,4 +404,117 @@ test("notification memo is opt-in, images expand without acknowledging, and priv
     )
     .toBe("done");
   await notice.close();
+});
+
+test("deadline and reminder drafts do not execute before explicit save and can be discarded", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const task = await service(page, "SaveTask", {
+    id: 0,
+    version: 0,
+    title: "保存前通知の回帰確認",
+    status: "pending",
+    memo: "",
+    deadline: "",
+    reminder_at: "",
+    category_id: 0,
+  });
+  await page.reload();
+  const row = page.locator(".task-row").filter({ hasText: task.title });
+  const detail = page.getByLabel("タスクの詳細", { exact: true });
+  const edit = async () => {
+    await row.locator(".card-content").click();
+    await detail.getByLabel("期限日", { exact: true }).fill("2000-01-01");
+    await detail.getByLabel("通知方法").selectOption("custom");
+    await detail
+      .getByLabel("通知時刻", { exact: true })
+      .fill("2000-01-01T10:00");
+  };
+  await edit();
+  await page.waitForTimeout(1100);
+  let snapshot = await service(page, "GetSnapshot");
+  expect(snapshot.tasks.find((t: any) => t.id === task.id)).toMatchObject({
+    deadline: "",
+    reminder_at: "",
+  });
+  expect(snapshot.notifications.some((n: any) => n.task_id === task.id)).toBe(
+    false,
+  );
+  await detail.getByLabel("詳細を閉じる").click();
+  await page
+    .getByRole("button", { name: "破棄して続ける", exact: true })
+    .click();
+  await expect(detail).toHaveCount(0);
+  await row.locator(".card-content").click();
+  await expect(detail.getByLabel("期限日", { exact: true })).toHaveValue("");
+  await expect(detail.getByLabel("通知方法")).toHaveValue("off");
+  await detail.getByLabel("詳細を閉じる").click();
+  await edit();
+  await detail.getByLabel("詳細を閉じる").click();
+  await page
+    .getByRole("button", { name: "保存して続ける", exact: true })
+    .click();
+  await expect(detail).toHaveCount(0);
+  snapshot = await service(page, "GetSnapshot");
+  expect(snapshot.tasks.find((t: any) => t.id === task.id)).toMatchObject({
+    deadline: "2000-01-01",
+    reminder_at: "2000-01-01T10:00",
+  });
+  await expect
+    .poll(async () =>
+      (await service(page, "GetSnapshot")).notifications.some(
+        (n: any) => n.task_id === task.id && !n.acknowledged,
+      ),
+    )
+    .toBe(true);
+  await service(page, "SetState", task.id, "done");
+});
+
+test("completed and trash category groups only show categories with matching tasks", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const categories = [];
+  for (const name of ["履歴表示対象", "履歴表示空欄"])
+    categories.push(
+      await service(page, "SaveCategory", {
+        id: 0,
+        name,
+        color: "#fffdf8",
+        text_color: "#302d25",
+        sort_order: 0,
+        dormant: false,
+      }),
+    );
+  const task = await service(page, "SaveTask", {
+    id: 0,
+    version: 0,
+    title: "カテゴリ絞り込み確認",
+    status: "done",
+    category_id: categories[0].id,
+    memo: "",
+    deadline: "",
+    reminder_at: "",
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "完了済み", exact: true }).click();
+  await expect(
+    page.getByRole("region", { name: categories[0].name, exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: categories[1].name, exact: true }),
+  ).toHaveCount(0);
+  await service(page, "SetState", task.id, "trash");
+  await expect(
+    page.getByRole("region", { name: categories[0].name, exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "メニュー", exact: true }).click();
+  await page.getByRole("button", { name: "ごみ箱", exact: true }).click();
+  await expect(
+    page.getByRole("region", { name: categories[0].name, exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: categories[1].name, exact: true }),
+  ).toHaveCount(0);
 });

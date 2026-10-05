@@ -364,10 +364,10 @@ export default function App() {
       report(e);
     }
   }, [report]);
-  const flush = () => handle.current?.flush() ?? Promise.resolve();
+  const leaveDetail = () => handle.current?.leave() ?? Promise.resolve(true);
   const navigate = async (fn: () => void) => {
     try {
-      await flush();
+      if (!(await leaveDetail())) return;
       setSelected(null);
       setMenu(false);
       setDeadline("");
@@ -378,12 +378,16 @@ export default function App() {
   };
   const open = async (t: Task) => {
     try {
-      await flush();
+      if (!(await leaveDetail())) return;
 
+      const latest = await api<Snapshot>("GetSnapshot");
+      const target = latest.tasks.find((current) => current.id === t.id);
+      if (!target) return;
+      setData(latest);
       setPanel("");
       setDeadline("");
       setSelected(null);
-      setTimeout(() => setSelected(t), 0);
+      setTimeout(() => setSelected(target), 0);
     } catch (e) {
       report(e);
     }
@@ -413,7 +417,7 @@ export default function App() {
   };
   const closeBoard = async (mode = "hide") => {
     try {
-      await flush();
+      if (!(await leaveDetail())) return;
       resetOperation();
       await api("FinishClose", mode);
     } catch (e) {
@@ -425,8 +429,7 @@ export default function App() {
     void api("Ready", "board").catch(report);
     const off = [
       on("board:notices", () => {
-        setPanel("notices");
-        setSelected(null);
+        void navigate(() => setPanel("notices"));
       }),
       on("board:changed", () => void reload()),
       on("board:error", report),
@@ -603,7 +606,7 @@ export default function App() {
   };
   const state = async (t: Task, value: string) => {
     try {
-      if (selected?.id === t.id) await flush();
+      if (selected?.id === t.id && !(await leaveDetail())) return;
       await api("SetState", t.id, value);
       if (selected?.id === t.id) setSelected(null);
       await reload();
@@ -615,7 +618,7 @@ export default function App() {
     if (bulkBusy) return;
     setBulkBusy(true);
     try {
-      await flush();
+      if (!(await leaveDetail())) return;
       const latest = await api<Snapshot>("GetSnapshot");
       const count = latest.tasks.filter((t) =>
         permanent ? !!t.deleted_at : !t.deleted_at && t.status === "done",
@@ -695,7 +698,7 @@ export default function App() {
     .filter((c) => todayOnly || category < 0 || c.id === category)
     .filter(
       (c) =>
-        (!recurringOnly && !todayOnly) ||
+        (view === "board" && !recurringOnly && !todayOnly) ||
         tasks.some((t) => t.category_id === c.id),
     );
   const drag = view === "board" && !todayOnly && !query && !important && !dated;
@@ -708,7 +711,7 @@ export default function App() {
       : tasks.find((t) => t.id === e.over?.id)?.category_id;
     if (target === undefined) return;
     try {
-      await flush();
+      if (!(await leaveDetail())) return;
       if (moving.category_id !== target)
         await api("MoveTask", moving.id, target);
       const items = tasks.filter(

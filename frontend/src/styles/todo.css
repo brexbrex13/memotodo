@@ -1754,3 +1754,10 @@ button {
 .notice-lightbox { background: #000d; }
 
 [data-theme="dark"] .notice-memo a { color: #9bc5ff; }
+
+.unsaved-dialog { padding: 18px; }
+.image-viewer { height: 100vh; display: flex; flex-direction: column; background: #1e1e1e; color: #f5f5f5; }
+.image-viewer header { height: 38px; flex-shrink: 0; display: flex; justify-content: flex-end; }
+.image-viewer header button { border: 0; border-radius: 0; background: transparent; color: #fff; font-size: 24px; padding: 0 14px; --wails-draggable: no-drag; }
+.image-viewer > img { width: 100%; flex: 1; min-height: 0; object-fit: contain; padding: 0 12px 12px; }
+.image-viewer > p { padding: 12px; }

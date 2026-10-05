@@ -432,7 +432,7 @@ test("memo inserts unselected links and recognizes quoted local paths; notificat
   await expect(notify).toHaveValue("tomorrow");
   await notify.dispatchEvent("wheel", { deltaY: 120 });
   await expect(notify).toHaveValue("30m");
-  await page.getByRole("button", { name: "詳細を閉じる", exact: true }).click();
+  await page.getByRole("button", { name: "今すぐ保存", exact: true }).click();
   await service(page, "SetState", task.id, "done");
 });
 
